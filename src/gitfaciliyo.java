@@ -6,6 +6,6 @@ public class gitfaciliyo {
         printHola();
     }
     public static void printHola(){
-        System.out.println("¡Hola mundo!");
+        System.out.println("Peter Griffing");
     }
 }
