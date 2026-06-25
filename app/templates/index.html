@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Desglose de gastos · PDF</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <header>
+    <h1>💸 Desglose de gastos</h1>
+    <p class="sub">Sube el extracto en PDF y obtén el gasto <strong>neto</strong> por categorías.
+       Las inversiones (Nexo) no cuentan como gasto, y los bizums recibidos que sean
+       devoluciones reducen el gasto en lugar de sumar como ingreso.</p>
+  </header>
+
+  <section class="upload card">
+    <form id="form">
+      <label class="filebox" id="drop">
+        <input type="file" id="pdf" accept="application/pdf" hidden>
+        <span id="filelabel">Arrastra aquí tu PDF o haz clic para elegirlo</span>
+      </label>
+      <button type="submit" id="go">Analizar</button>
+    </form>
+    <p id="status" class="status"></p>
+  </section>
+
+  <main id="results" hidden>
+    <section class="cards" id="summary"></section>
+
+    <section class="card">
+      <h2>Gasto neto por categoría</h2>
+      <table id="catTable">
+        <thead>
+          <tr><th>Categoría</th><th class="num">Gasto bruto</th>
+              <th class="num">Devoluciones</th><th class="num">Gasto neto</th><th class="num">%</th></tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot></tfoot>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Bizums recibidos <small>— ¿devolución de un gasto o ingreso real?</small></h2>
+      <p class="hint">Liga cada bizum recibido al gasto que te devuelven. Si lo ligas, ese
+         importe se resta del gasto (p. ej. cena de 30 € con dos bizums de 10 € → 10 € de gasto).
+         Déjalo en <em>«Ingreso real»</em> si de verdad es dinero que entra.</p>
+      <table id="bizumTable">
+        <thead>
+          <tr><th>Fecha</th><th class="num">Importe</th><th>Ligar a gasto…</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Todos los movimientos</h2>
+      <table id="txTable">
+        <thead>
+          <tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th class="num">Importe</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
