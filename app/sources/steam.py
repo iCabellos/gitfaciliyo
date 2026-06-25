@@ -48,8 +48,13 @@ def fetch_inventory(steamid, count=5000):
     url = (f"https://steamcommunity.com/inventory/{steamid}/{APPID}/{CONTEXTID}"
            f"?l=english&count={count}")
     status, data = http.get_json(url)
+    if status == 400 or status == 403:
+        raise RuntimeError(
+            "Steam no deja leer el inventario (parece privado). En Steam: Editar perfil → "
+            "Privacidad → «Detalles del juego» = Público y desmarca «Mantener mi inventario "
+            "siempre privado». Luego vuelve a intentarlo.")
     if status != 200 or not data:
-        raise RuntimeError(f"Steam devolvió {status}. ¿Inventario público y SteamID64 correcto?")
+        raise RuntimeError(f"Steam devolvió {status}. ¿SteamID64 correcto e inventario público?")
     return data
 
 

@@ -2,8 +2,8 @@
   "_comment": "Copia este archivo a config.json y rellena tus datos. config.json está en .gitignore.",
   "currency": "eur",
   "steam": {
-    "steamid64": "TU_STEAMID64_AQUI",
-    "_note": "Tu inventario de Steam debe estar en PÚBLICO. SteamID64 = el número largo de tu perfil (steamid.io)."
+    "steamid64": "76561198110817711",
+    "_note": "Tu inventario de Steam debe estar en PÚBLICO (Privacidad → Detalles del juego = Público)."
   },
   "moxfield": {
     "default_deck": "",

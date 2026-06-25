@@ -27,15 +27,20 @@ from sources import bank, trade_republic, nexo, steam, moxfield
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
-_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+_HERE = os.path.dirname(__file__)
+_CONFIG_PATH = os.path.join(_HERE, "config.json")
+_CONFIG_EXAMPLE = os.path.join(_HERE, "config.example.json")
 
 
 def load_config():
-    try:
-        with open(_CONFIG_PATH) as fh:
-            return json.load(fh)
-    except (OSError, ValueError):
-        return {}
+    """Lee config.json; si no existe, usa config.example.json como respaldo."""
+    for path in (_CONFIG_PATH, _CONFIG_EXAMPLE):
+        try:
+            with open(path) as fh:
+                return json.load(fh)
+        except (OSError, ValueError):
+            continue
+    return {}
 
 
 def _save_upload(file_storage, suffixes):

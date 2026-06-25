@@ -61,11 +61,13 @@ app/
 
 ## Formatos de archivo
 
-Los parsers de **Trade Republic** y **Nexo** detectan las columnas por su cabecera
-y, como respaldo que **siempre** funciona, aceptan un CSV normalizado:
+**Trade Republic** reconoce su PDF real *«Extracto del patrimonio neto»* (posiciones
+`<unidades> unidades <nombre> | <precio> | <valor>` con ISIN, más el efectivo) y,
+como respaldo, un CSV normalizado. **Nexo** detecta columnas por cabecera y también
+acepta CSV normalizado:
 
 ```csv
-# Trade Republic
+# Trade Republic (respaldo CSV)
 name,isin,quantity,price,value
 Apple,US0378331005,3,180.50,541.50
 
@@ -74,9 +76,9 @@ asset,amount,value
 BTC,0.05,3120.00
 ```
 
-> Estos dos parsers son **tolerantes pero heurísticos** para PDF; en cuanto me
-> pases un informe real de TR/Nexo ajusto las columnas exactas. El resto
-> (banco, Steam, Scryfall) está probado de extremo a extremo.
+> El parser de TR está probado con el extracto real (S&P 500, Take-Two → 1.607,60 €).
+> El de **Nexo** sigue siendo heurístico para PDF hasta tener un informe real de
+> muestra; en cuanto me pases uno, ajusto sus columnas exactas.
 
 ## Notas e integraciones
 
