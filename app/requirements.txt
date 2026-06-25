@@ -1,2 +1,3 @@
 Flask>=3.0
 pdfminer.six>=20221105
+# Las llamadas HTTP (Steam, Scryfall) usan la librería estándar; sin más dependencias.

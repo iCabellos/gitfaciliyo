@@ -3,66 +3,97 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Desglose de gastos · PDF</title>
+  <title>Mi patrimonio</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
   <header>
-    <h1>💸 Desglose de gastos</h1>
-    <p class="sub">Sube el extracto en PDF y obtén el gasto <strong>neto</strong> por categorías.
-       Las inversiones (Nexo) no cuentan como gasto, y los bizums recibidos que sean
-       devoluciones reducen el gasto en lugar de sumar como ingreso.</p>
+    <h1>📊 Mi patrimonio</h1>
+    <p class="sub">Todo en uno: banco, Trade Republic, Nexo, skins de CS:GO y cartas Magic.
+       Sube los informes mensuales y conecta tus inventarios en vivo.</p>
   </header>
 
-  <section class="upload card">
-    <form id="form">
-      <label class="filebox" id="drop">
-        <input type="file" id="pdf" accept="application/pdf" hidden>
-        <span id="filelabel">Arrastra aquí tu PDF o haz clic para elegirlo</span>
-      </label>
-      <button type="submit" id="go">Analizar</button>
-    </form>
-    <p id="status" class="status"></p>
+  <!-- Resumen consolidado -->
+  <section class="card">
+    <h2>Patrimonio consolidado</h2>
+    <div class="cards" id="summary"></div>
+    <p class="hint" id="summaryHint">Carga al menos una fuente para ver el total.</p>
   </section>
 
-  <main id="results" hidden>
-    <section class="cards" id="summary"></section>
+  <nav class="tabs" id="tabs">
+    <button data-tab="banco" class="active">🏦 Banco / Gastos</button>
+    <button data-tab="tr">📈 Trade Republic</button>
+    <button data-tab="nexo">🪙 Nexo</button>
+    <button data-tab="csgo">🔫 CS:GO Skins</button>
+    <button data-tab="magic">🃏 Cartas Magic</button>
+  </nav>
 
-    <section class="card">
-      <h2>Gasto neto por categoría</h2>
-      <table id="catTable">
-        <thead>
-          <tr><th>Categoría</th><th class="num">Gasto bruto</th>
-              <th class="num">Devoluciones</th><th class="num">Gasto neto</th><th class="num">%</th></tr>
-        </thead>
-        <tbody></tbody>
-        <tfoot></tfoot>
-      </table>
-    </section>
+  <!-- BANCO -->
+  <section class="tabpane card active" id="pane-banco">
+    <h2>Banco · desglose de gastos netos</h2>
+    <p class="hint">Las inversiones (Nexo) no son gasto y los bizums recibidos que sean
+       devoluciones reducen el gasto. Liga cada bizum a su gasto abajo.</p>
+    <form class="row" data-upload="/api/bank" data-field="file" data-target="bankResult">
+      <label class="filebox"><input type="file" accept="application/pdf" hidden>
+        <span>PDF del extracto bancario</span></label>
+      <button type="submit">Analizar</button>
+    </form>
+    <div id="bankResult"></div>
+  </section>
 
-    <section class="card">
-      <h2>Bizums recibidos <small>— ¿devolución de un gasto o ingreso real?</small></h2>
-      <p class="hint">Liga cada bizum recibido al gasto que te devuelven. Si lo ligas, ese
-         importe se resta del gasto (p. ej. cena de 30 € con dos bizums de 10 € → 10 € de gasto).
-         Déjalo en <em>«Ingreso real»</em> si de verdad es dinero que entra.</p>
-      <table id="bizumTable">
-        <thead>
-          <tr><th>Fecha</th><th class="num">Importe</th><th>Ligar a gasto…</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </section>
+  <!-- TRADE REPUBLIC -->
+  <section class="tabpane card" id="pane-tr">
+    <h2>Trade Republic · acciones y ETFs</h2>
+    <p class="hint">Sube el informe mensual (PDF o CSV). Formato CSV normalizado:
+       <code>name,isin,quantity,price,value</code>.</p>
+    <form class="row" data-upload="/api/trade-republic" data-field="file" data-target="trResult">
+      <label class="filebox"><input type="file" accept=".pdf,.csv" hidden>
+        <span>PDF o CSV de Trade Republic</span></label>
+      <button type="submit">Cargar</button>
+    </form>
+    <div id="trResult"></div>
+  </section>
 
-    <section class="card">
-      <h2>Todos los movimientos</h2>
-      <table id="txTable">
-        <thead>
-          <tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th class="num">Importe</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </section>
-  </main>
+  <!-- NEXO -->
+  <section class="tabpane card" id="pane-nexo">
+    <h2>Nexo · cripto</h2>
+    <p class="hint">Sube el informe/balances (CSV o PDF). Formato CSV normalizado:
+       <code>asset,amount,value</code>.</p>
+    <form class="row" data-upload="/api/nexo" data-field="file" data-target="nexoResult">
+      <label class="filebox"><input type="file" accept=".csv,.pdf" hidden>
+        <span>CSV o PDF de Nexo</span></label>
+      <button type="submit">Cargar</button>
+    </form>
+    <div id="nexoResult"></div>
+  </section>
+
+  <!-- CS:GO -->
+  <section class="tabpane card" id="pane-csgo">
+    <h2>CS:GO · skins del inventario de Steam</h2>
+    <p class="hint">Tu inventario de Steam debe estar en <strong>público</strong>.
+       Se valora con el Steam Market (EUR).</p>
+    <form class="row" id="steamForm">
+      <input type="text" id="steamid" placeholder="SteamID64 (p. ej. 7656119...)" />
+      <button type="submit">Conectar inventario</button>
+    </form>
+    <div id="steamResult"></div>
+  </section>
+
+  <!-- MAGIC -->
+  <section class="tabpane card" id="pane-magic">
+    <h2>Magic · mazos de Moxfield (precio en vivo con Scryfall)</h2>
+    <p class="hint">Pega la URL/ID de un mazo público de Moxfield, o pega la decklist
+       exportada (más fiable). El precio se pide en tiempo real a Scryfall.</p>
+    <form id="magicForm">
+      <div class="row">
+        <input type="text" id="moxfield" placeholder="URL o ID de mazo de Moxfield (opcional)" />
+        <button type="submit">Valorar</button>
+      </div>
+      <textarea id="decklist" rows="6"
+        placeholder="…o pega aquí la decklist:&#10;1 Sol Ring&#10;1 Lightning Bolt&#10;1 Counterspell"></textarea>
+    </form>
+    <div id="magicResult"></div>
+  </section>
 
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

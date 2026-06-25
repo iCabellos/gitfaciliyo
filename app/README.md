@@ -1,58 +1,90 @@
-# Desglose de gastos desde PDF
+# 📊 Mi patrimonio — panel personal
 
-App web para subir un extracto bancario en **PDF** y obtener el **gasto neto
-desglosado por categorías**, aplicando reglas pensadas para que el número final
-refleje el gasto real:
+Una sola app para controlar **todas tus inversiones y gastos**:
 
-- 🟢 **Las inversiones no son gastos.** Los cargos de **Nexo** se clasifican como
-  *Inversión* y se excluyen del total de gastos.
-- 🔁 **Bizums recibidos = posibles devoluciones.** Si te devuelven dinero por una
-  compra (p. ej. tu parte de una cena), ese bizum **resta del gasto** en lugar de
-  contar como ingreso.
-- 🍽️ **Gasto neto.** Si una cena costó 30 € y te hacen dos bizums de 10 €, el gasto
-  de restaurante es **10 €**, no 30 €.
+| Fuente | Cómo entra | Estado |
+|---|---|---|
+| 🏦 **Banco** | Subes el PDF del extracto | Gastos **netos** por categoría |
+| 📈 **Trade Republic** | Subes el informe mensual (PDF o CSV) | Acciones / ETFs |
+| 🪙 **Nexo** | Subes el informe/balances (CSV o PDF) | Cripto |
+| 🔫 **CS:GO** | Conecta con tu **Steam Inventory** | Skins valoradas con el Steam Market (en vivo) |
+| 🃏 **Magic** | Mazo de **Moxfield** o decklist pegada | Precio **en tiempo real** con Scryfall |
 
-La app detecta automáticamente bizums recurrentes del mismo importe (probable
-ingreso real, no devolución) y propone a qué gasto ligar cada bizum recibido.
-**Tú revisas y ajustas** cada enlace con un desplegable, y los totales se
-recalculan al instante.
+Arriba se muestra el **patrimonio consolidado** (liquidez del banco + acciones +
+cripto + skins + cartas), que se actualiza a medida que cargas cada fuente.
 
 ## Ejecutar
 
 ```bash
 cd app
 pip install -r requirements.txt
-python app.py
-# abre http://127.0.0.1:5000
+python app.py            # http://127.0.0.1:5000
 ```
 
-Sube el PDF, revisa los enlaces bizum → gasto en la sección *«Bizums recibidos»*
-y consulta el desglose en *«Gasto neto por categoría»*.
+(Opcional) Copia `config.example.json` a `config.json` y pon tu SteamID64 y tu
+mazo de Moxfield por defecto. `config.json` está en `.gitignore`.
 
-## Cómo funciona
+## Cada mes
 
-| Fichero | Responsabilidad |
-|---|---|
-| `parser.py` | Parseo del PDF por coordenadas (robusto frente al orden del texto), categorización por reglas y sugerencia automática de devoluciones bizum → gasto. |
-| `app.py` | Servidor Flask: sirve la página y expone `POST /api/analyze`. |
-| `templates/index.html` + `static/` | Interfaz: carga del PDF, tarjetas resumen, tabla por categoría, enlace interactivo de bizums y listado de movimientos. |
+1. **Banco / Trade Republic / Nexo** → subes los informes del mes en sus pestañas.
+2. **CS:GO** → pulsas «Conectar inventario» (tu inventario de Steam debe estar en
+   **público**); se valoran las skins con el Steam Market.
+3. **Magic** → pegas la decklist (o la URL del mazo) y se piden los precios a Scryfall.
 
-### Reglas de categorización
+## Reglas del banco (gasto neto)
 
-Las categorías se definen en `RULES` (en `parser.py`) como pares
-*patrón → categoría → tipo*. El `tipo` determina cómo cuenta cada movimiento:
+- 🟢 **Las inversiones no son gastos** → los cargos de **Nexo** se excluyen del gasto.
+- 🔁 **Bizums recibidos = posible devolución** → si te devuelven dinero por una compra,
+  ese bizum **resta del gasto** en vez de contar como ingreso.
+- 🍽️ **Gasto neto** → cena de 30 € con dos bizums de 10 € → gasto de restaurante **10 €**.
 
-- `expense` — gasto normal (cuenta para el total).
-- `investment` — inversión (Nexo): **no** es gasto.
-- `bizum_in` — bizum recibido (posible devolución).
-- `bizum_out` — bizum enviado (salida de dinero).
-- `income` — ingreso real (nómina, transferencias a favor).
+Cada bizum recibido se puede **ligar manualmente** al gasto que reembolsa (con
+sugerencia automática); los totales se recalculan al instante.
 
-Para añadir comercios o ajustar categorías, edita la lista `RULES`.
+## Estructura
 
-## Notas
+```
+app/
+  app.py                 # Flask: rutas y orquestación
+  config.example.json    # plantilla de configuración (SteamID, Moxfield)
+  sources/
+    common.py            # Position, parseo de importes y de tablas PDF (por coordenadas)
+    http.py              # cliente HTTP stdlib que respeta el proxy y su CA
+    bank.py              # extracto del banco -> gasto neto + enlace de bizums
+    trade_republic.py    # informe TR (PDF/CSV) -> acciones/ETFs
+    nexo.py              # informe Nexo (CSV/PDF) -> cripto
+    steam.py             # Steam Inventory + Steam Market -> skins CS:GO
+    moxfield.py          # Moxfield/decklist + precios Scryfall en vivo -> cartas Magic
+  templates/index.html   # panel con pestañas
+  static/                # app.js (interacción + consolidado), styles.css
+```
 
-- El extracto de ejemplo no incluye el emisor del bizum, así que el enlace
-  bizum → gasto es una **sugerencia heurística** (por cercanía de fecha e importe
-  y categoría compartible). Por eso la decisión final es manual.
-- Probado con extractos cuyo formato de tabla es *Concepto · Fecha · Importe · Saldo*.
+## Formatos de archivo
+
+Los parsers de **Trade Republic** y **Nexo** detectan las columnas por su cabecera
+y, como respaldo que **siempre** funciona, aceptan un CSV normalizado:
+
+```csv
+# Trade Republic
+name,isin,quantity,price,value
+Apple,US0378331005,3,180.50,541.50
+
+# Nexo
+asset,amount,value
+BTC,0.05,3120.00
+```
+
+> Estos dos parsers son **tolerantes pero heurísticos** para PDF; en cuanto me
+> pases un informe real de TR/Nexo ajusto las columnas exactas. El resto
+> (banco, Steam, Scryfall) está probado de extremo a extremo.
+
+## Notas e integraciones
+
+- **Scryfall** (precios Magic) y **Steam Market** (precios skins): APIs públicas,
+  funcionan tal cual. Scryfall se consulta en lotes de 75 cartas; si una carta solo
+  tiene precio en USD se indica y no se suma al total en €.
+- **Steam Inventory**: requiere inventario **público**. Los precios se **cachean**
+  en `sources/.cache/` (6 h) y se respeta el límite de peticiones del Market.
+- **Moxfield**: su API suele bloquear el acceso automático (Cloudflare). Por eso la
+  vía recomendada es **pegar la decklist** exportada; igualmente se intenta la API
+  si das una URL/ID de mazo.
