@@ -14,7 +14,7 @@ de precios.
 ## Opción A — Render (recomendada, con `render.yaml`)
 
 1. Sube este repo a GitHub (ya está).
-2. En Render: **New → Blueprint** y apunta al repo. Detectará `app/render.yaml`.
+2. En Render: **New → Blueprint** y apunta al repo. Detectará `render.yaml` (en la raíz).
 3. Render crea un servicio web (plan **starter**, no *free*) con disco de 1 GB.
 4. En **Environment**, rellena las variables de Twilio (ver abajo). `ENABLE_SCHEDULER`
    ya viene a `1`.

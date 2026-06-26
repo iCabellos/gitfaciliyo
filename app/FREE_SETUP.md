@@ -49,7 +49,7 @@ guarda en el propio repositorio. La web (gráficos + subir PDFs) es opcional en
 
 ## Web (opcional, también gratis)
 
-En Render: **New → Blueprint** apuntando al repo (`app/render.yaml`, plan *free*).
+En Render: **New → Blueprint** apuntando al repo (`render.yaml` en la raíz, plan *free*).
 Te da una URL pública para ver los gráficos y subir PDFs. Se duerme cuando no la
 usas y despierta al abrirla. *(El histórico de precios no depende de la web: vive
 en el repo gracias a Actions.)*
