@@ -14,6 +14,6 @@ COPY . .
 VOLUME ["/data"]
 EXPOSE 8000
 
+# Forma shell para expandir $PORT (Render/host asigna el puerto; 8000 por defecto).
 # Un solo worker: comparte el scheduler en proceso y la caché de precios.
-CMD ["gunicorn", "app:app", "--workers", "1", "--threads", "4", \
-     "--bind", "0.0.0.0:8000", "--timeout", "180"]
+CMD gunicorn app:app --workers 1 --threads 4 --bind 0.0.0.0:${PORT:-8000} --timeout 180
