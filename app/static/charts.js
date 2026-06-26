@@ -120,7 +120,7 @@
   // Refresca al abrir la pestaña de gráficos.
   document.querySelectorAll('#tabs button[data-tab="graficos"]').forEach((b) =>
     b.addEventListener("click", () => { refresh(); refreshPie(window.CONTRIB || {}); }));
-  // Primera carga (incluye el estado restaurado desde localStorage).
+  // Primera carga (incluye el estado restaurado desde la base de datos).
   refresh();
   refreshPie(window.CONTRIB || {});
 })();
