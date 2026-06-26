@@ -79,6 +79,16 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+
+@app.route("/favicon.ico")
+def favicon():
+    return app.send_static_file("favicon.svg")
+
+
 @app.route("/api/snapshots", methods=["GET"])
 def api_snapshots_get():
     """Histórico mensual de patrimonio: { 'YYYY-MM': { categoria: valor } }."""
@@ -244,9 +254,19 @@ def _twiml(message):
     return app.response_class(xml, mimetype="text/xml")
 
 
+def _webhook_authorized():
+    """Si WHATSAPP_WEBHOOK_TOKEN está definido, exige ?token=... (endpoint público)."""
+    expected = os.environ.get("WHATSAPP_WEBHOOK_TOKEN", "").strip()
+    if not expected:
+        return True
+    return request.args.get("token", "") == expected
+
+
 @app.route("/webhook/whatsapp", methods=["POST"])
 def whatsapp_inbound():
     """Webhook de Twilio: procesa PDFs/CSV adjuntos enviados por WhatsApp."""
+    if not _webhook_authorized():
+        return _twiml("No autorizado."), 403
     try:
         num_media = int(request.form.get("NumMedia", "0"))
     except ValueError:
