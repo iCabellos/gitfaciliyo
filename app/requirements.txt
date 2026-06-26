@@ -2,4 +2,6 @@ Flask>=3.0
 pdfminer.six>=20221105
 gunicorn>=21.2          # servidor WSGI para producción
 APScheduler>=3.10       # programador en proceso (precios diarios + WhatsApp semanal)
+SQLAlchemy>=2.0         # capa de base de datos (snapshots + caché diaria)
+psycopg2-binary>=2.9    # driver PostgreSQL (producción; en local se usa SQLite)
 # Las llamadas HTTP (Steam, Scryfall, Twilio) usan la librería estándar; sin más dependencias.

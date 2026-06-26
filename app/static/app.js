@@ -13,23 +13,11 @@ let BANK_NET = null;        // gasto neto del mes (informativo, no patrimonio)
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);   // YYYY-MM
 
-// Persistencia local: sobrevive a los reinicios del hosting gratuito (Render free
-// no tiene disco), así el histórico mensual y el último estado no se pierden.
-const LS = {
-  snaps() { try { return JSON.parse(localStorage.getItem("mp_snapshots") || "{}"); } catch (e) { return {}; } },
-  saveSnap(m, c, v) { const s = LS.snaps(); (s[m] = s[m] || {})[c] = Math.round(v * 100) / 100; localStorage.setItem("mp_snapshots", JSON.stringify(s)); },
-  contrib() { try { return JSON.parse(localStorage.getItem("mp_contrib") || "{}"); } catch (e) { return {}; } },
-  saveContrib(o) { try { localStorage.setItem("mp_contrib", JSON.stringify(o)); } catch (e) {} },
-};
-window.LS = LS;
-
 function setContrib(label, value, month) {
   CONTRIB[label] = value;
-  LS.saveContrib(CONTRIB);
   renderSummary();
-  // Snapshot mensual: en el servidor (si persiste) y en local (siempre).
+  // Snapshot mensual en la base de datos (compartido entre dispositivos).
   const m = month || thisMonth();
-  LS.saveSnap(m, label, value);
   fetch("/api/snapshot", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ month: m, category: label, value }),
@@ -258,13 +246,14 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
   if (c.moxfield) $("#moxfield").value = c.moxfield;
 }).catch(() => {});
 
-// ---- restaurar último estado (persistencia local) ----------------------
-(function restore() {
-  const saved = LS.contrib();
-  if (Object.keys(saved).length) {
-    Object.assign(CONTRIB, saved);
-    renderSummary();
-    const hint = document.getElementById("summaryHint");
-    if (hint) hint.textContent = "Mostrando tu último estado guardado. Vuelve a subir un documento para actualizar.";
-  }
-})();
+// ---- restaurar desde la base de datos (mismo dato en móvil/PC/amigos) ---
+fetch("/api/snapshots").then((r) => r.json()).then((snaps) => {
+  const months = Object.keys(snaps || {}).sort();
+  if (!months.length) return;
+  const last = snaps[months[months.length - 1]];      // mes más reciente
+  Object.assign(CONTRIB, last);
+  renderSummary();
+  if (window.Charts) window.Charts.refreshPie(CONTRIB);
+  const hint = document.getElementById("summaryHint");
+  if (hint) hint.textContent = "Datos guardados en la nube. Sube un documento para actualizar.";
+}).catch(() => {});

@@ -16,6 +16,7 @@ Fuentes en vivo (API):
     GET  /api/config                                  -> valores por defecto
 """
 
+import hashlib
 import json
 import os
 import re
@@ -23,7 +24,7 @@ import tempfile
 
 from flask import Flask, jsonify, render_template, request
 
-from sources import bank, trade_republic, nexo, steam, moxfield
+from sources import bank, trade_republic, nexo, steam, moxfield, db
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
@@ -92,19 +93,17 @@ def favicon():
 @app.route("/api/snapshots", methods=["GET"])
 def api_snapshots_get():
     """Histórico mensual de patrimonio: { 'YYYY-MM': { categoria: valor } }."""
-    return jsonify(_read_json(_SNAPSHOTS, {}))
+    return jsonify(db.get_snapshots())
 
 
 def _record_snapshot(month, category, value):
-    snaps = _read_json(_SNAPSHOTS, {})
-    snaps.setdefault(month, {})[category] = round(float(value), 2)
-    _write_json(_SNAPSHOTS, snaps)
-    return snaps
+    db.set_snapshot(month, category, value)
+    return db.get_snapshots()
 
 
 @app.route("/api/snapshot", methods=["POST"])
 def api_snapshot_post():
-    """Guarda/actualiza el valor de una categoría para un mes concreto."""
+    """Guarda/actualiza el valor de una categoría para un mes concreto (en la DB)."""
     body = request.get_json(silent=True) or {}
     month = (body.get("month") or "").strip()
     category = (body.get("category") or "").strip()
@@ -116,7 +115,7 @@ def api_snapshot_post():
 
 @app.route("/api/snapshots/reset", methods=["POST"])
 def api_snapshots_reset():
-    _write_json(_SNAPSHOTS, {})
+    db.reset_snapshots()
     return jsonify({"ok": True})
 
 
@@ -161,14 +160,37 @@ def api_nexo():
     return _file_route("file", (".csv", ".pdf"), nexo.parse)
 
 
+def _cached_daily(key, compute):
+    """Devuelve la valoración cacheada del día; si no hay, la calcula y la guarda.
+
+    Evita golpear Steam/Scryfall en cada visita (y al compartir con amigos): se
+    valora una vez al día por entrada.
+    """
+    hit = db.cache_get_today(key)
+    if hit is not None:
+        hit["cached"] = True
+        return hit
+    data = compute()
+    db.cache_put(key, data)
+    data["cached"] = False
+    return data
+
+
 @app.route("/api/steam")
 def api_steam():
     steamid = (request.args.get("steamid") or load_config().get("steam", {}).get("steamid64", "")).strip()
     currency = request.args.get("currency", "eur")
     if not steamid or steamid.startswith("TU_"):
         return jsonify({"error": "Indica tu SteamID64 (inventario en público)."}), 400
+    nocache = request.args.get("refresh") == "1"
     try:
-        return jsonify(steam.analyze(steamid, currency))
+        key = f"steam:{steamid}:{currency}"
+        if nocache:
+            data = steam.analyze(steamid, currency)
+            db.cache_put(key, data)
+        else:
+            data = _cached_daily(key, lambda: steam.analyze(steamid, currency))
+        return jsonify(data)
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 502
 
@@ -180,8 +202,15 @@ def api_magic():
     decklist = body.get("decklist") or ""
     if not reference and not decklist.strip():
         return jsonify({"error": "Indica una URL/ID de Moxfield o pega una decklist."}), 400
+    nocache = bool(body.get("refresh"))
     try:
-        return jsonify(moxfield.analyze(reference=reference, decklist=decklist))
+        key = "magic:" + hashlib.sha1((reference + "|" + decklist).encode()).hexdigest()
+        if nocache:
+            data = moxfield.analyze(reference=reference, decklist=decklist)
+            db.cache_put(key, data)
+        else:
+            data = _cached_daily(key, lambda: moxfield.analyze(reference=reference, decklist=decklist))
+        return jsonify(data)
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 502
 
@@ -190,51 +219,13 @@ def api_magic():
 # WhatsApp entrante: recibir y procesar PDFs enviados por WhatsApp (Twilio).
 # ---------------------------------------------------------------------------
 import base64                       # noqa: E402
-import datetime                     # noqa: E402
 import urllib.request               # noqa: E402
 
-from sources.common import extract_rows   # noqa: E402
-
-
-def _detect_kind(path):
-    """Decide si un documento es del banco, Trade Republic o Nexo."""
-    name = path.lower()
-    if name.endswith(".csv"):
-        with open(path, encoding="utf-8-sig", errors="replace") as fh:
-            head = fh.read(2000).lower()
-        if any(w in head for w in ("asset", "currency", "coin", "crypto")):
-            return "nexo"
-        return "tr"
-    text = " ".join(c for row in extract_rows(path) for c in row)
-    low = text.lower()
-    if "trade republic" in low or "patrimonio neto" in low or "cuenta de valores" in low:
-        return "tr"
-    if "nexo" in low and "bizum" not in low:
-        return "nexo"
-    # Banco: bizum, saldo disponible o un IBAN sin pinta de cartera de valores.
-    return "bank"
+from sources import ingest          # noqa: E402
 
 
 def _process_document(path):
-    """Procesa un documento, guarda el snapshot mensual y devuelve un resumen."""
-    kind = _detect_kind(path)
-    this_month = datetime.date.today().strftime("%Y-%m")
-    if kind == "tr":
-        r = trade_republic.parse(path)
-        month = r.get("month") or this_month
-        _record_snapshot(month, r["category"], r["total"])
-        return f"📈 Trade Republic: {r['total']:.2f} € guardado para {month} ({len(r['positions'])} posiciones)."
-    if kind == "nexo":
-        r = nexo.parse(path)
-        month = r.get("month") or this_month
-        _record_snapshot(month, r["category"], r["total"])
-        return f"🪙 Nexo: {r['total']:.2f} € guardado para {month}."
-    r = bank.analyze(path)
-    month = r.get("month") or this_month
-    if r.get("available_balance") is not None:
-        _record_snapshot(month, "Liquidez (banco)", r["available_balance"])
-    return (f"🏦 Banco: saldo {r.get('available_balance', 0):.2f} € guardado para {month} "
-            f"({len(r['transactions'])} movimientos).")
+    return ingest.process(path)["summary"]
 
 
 def _download_twilio_media(url):
