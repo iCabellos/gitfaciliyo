@@ -13,6 +13,15 @@ Una sola app para controlar **todas tus inversiones y gastos**:
 Arriba se muestra el **patrimonio consolidado** (liquidez del banco + acciones +
 cripto + skins + cartas), que se actualiza a medida que cargas cada fuente.
 
+Además incluye:
+- 📊 **Vista de gráficos**: tarta (doughnut) del reparto del patrimonio, barras
+  apiladas del **patrimonio mensual** (según la fecha de cada documento) con línea
+  de total, y mini-gráficas de evolución por categoría. El histórico se guarda en
+  `data/snapshots.json`.
+- 📈 **Seguimiento diario de precios** de tus cartas y skins (Scryfall + Steam
+  Market/CSFloat) y 📲 **alerta semanal por WhatsApp** de lo que haya subido >10%
+  algún día de la semana. Ver **[DEPLOY.md](DEPLOY.md)**.
+
 ## Ejecutar
 
 ```bash
@@ -55,9 +64,20 @@ app/
     nexo.py              # informe Nexo (CSV/PDF) -> cripto
     steam.py             # Steam Inventory + Steam Market -> skins CS:GO
     moxfield.py          # Moxfield/decklist + precios Scryfall en vivo -> cartas Magic
+  jobs/
+    track_prices.py      # seguimiento DIARIO de precios (cartas + skins)
+    weekly_whatsapp.py   # alerta SEMANAL por WhatsApp de subidas >10%
+    scheduler.py         # programador en proceso (APScheduler) para producción
   templates/index.html   # panel con pestañas
-  static/                # app.js (interacción + consolidado), styles.css
+  static/                # app.js, charts.js, anim.js, styles.css, vendor/
+  Dockerfile · Procfile · render.yaml · .env.example · DEPLOY.md   # despliegue
 ```
+
+## Despliegue público + alertas de precio
+
+Pensado para correr en una instancia siempre activa con disco persistente: sirve
+la web y, con un programador en proceso, hace el seguimiento diario de precios y
+el envío semanal por WhatsApp. Guía completa en **[DEPLOY.md](DEPLOY.md)**.
 
 ## Formatos de archivo
 

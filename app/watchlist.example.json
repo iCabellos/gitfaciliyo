@@ -1,0 +1,13 @@
+{
+  "_comment": "Copia a data/watchlist.json y pon tus cartas y skins. El seguimiento diario usa esta lista.",
+  "cards": [
+    "Sol Ring",
+    "Rhystic Study",
+    "Cyclonic Rift",
+    "Smothering Tithe"
+  ],
+  "skins": [
+    "AK-47 | Redline (Field-Tested)",
+    "★ Karambit | Doppler (Factory New)"
+  ]
+}

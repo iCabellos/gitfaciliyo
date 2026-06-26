@@ -1,0 +1,32 @@
+# Blueprint de Render — despliegue de "Mi patrimonio" con un clic.
+# Una instancia SIEMPRE ACTIVA con disco persistente: la app sirve la web y el
+# scheduler en proceso hace el seguimiento diario de precios y el WhatsApp semanal.
+services:
+  - type: web
+    name: mi-patrimonio
+    runtime: docker
+    plan: starter            # NO uses 'free': se duerme y el scheduler no dispararía.
+    dockerfilePath: ./app/Dockerfile
+    dockerContext: ./app
+    autoDeploy: true
+    healthCheckPath: /
+    disk:
+      name: patrimonio-data
+      mountPath: /data       # coincide con PATRIMONIO_DATA_DIR del Dockerfile
+      sizeGB: 1
+    envVars:
+      - key: ENABLE_SCHEDULER
+        value: "1"
+      - key: SCHEDULER_TZ
+        value: Europe/Madrid
+      # Rellena estas en el panel de Render (Environment) — no las pongas en git:
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: ALERT_WHATSAPP_TO
+        sync: false
+      - key: CSFLOAT_API_KEY
+        sync: false

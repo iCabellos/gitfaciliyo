@@ -6,3 +6,5 @@ venv/
 config.json
 sources/.cache/
 data/
+.env
+watchlist.json

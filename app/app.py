@@ -56,7 +56,7 @@ def _save_upload(file_storage, suffixes):
     return tmp.name
 
 
-_DATA_DIR = os.path.join(_HERE, "data")
+_DATA_DIR = os.environ.get("PATRIMONIO_DATA_DIR") or os.path.join(_HERE, "data")
 _SNAPSHOTS = os.path.join(_DATA_DIR, "snapshots.json")
 
 
@@ -172,5 +172,15 @@ def api_magic():
         return jsonify({"error": str(exc)}), 502
 
 
+# Programador en proceso para la versión desplegada (instancia siempre activa).
+if os.environ.get("ENABLE_SCHEDULER") == "1":
+    try:
+        from jobs.scheduler import start_scheduler
+        start_scheduler()
+    except Exception as exc:  # noqa: BLE001
+        print("No se pudo iniciar el scheduler:", exc)
+
+
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    port = int(os.environ.get("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port, debug=True)
