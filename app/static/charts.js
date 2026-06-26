@@ -57,9 +57,6 @@
   async function refresh() {
     let snaps = {};
     try { snaps = await (await fetch("/api/snapshots")).json(); } catch (e) { snaps = {}; }
-    // Mezclar con la persistencia local (sobrevive a reinicios del hosting free).
-    const local = (window.LS && window.LS.snaps()) || {};
-    for (const m in local) snaps[m] = Object.assign({}, snaps[m], local[m]);
     const months = Object.keys(snaps).sort();
     const monthlyEmpty = document.getElementById("monthlyEmpty");
     if (!months.length) { if (monthlyEmpty) monthlyEmpty.style.display = "block"; return; }
@@ -123,7 +120,7 @@
   // Refresca al abrir la pestaña de gráficos.
   document.querySelectorAll('#tabs button[data-tab="graficos"]').forEach((b) =>
     b.addEventListener("click", () => { refresh(); refreshPie(window.CONTRIB || {}); }));
-  // Primera carga (incluye el estado restaurado desde localStorage).
+  // Primera carga (incluye el estado restaurado desde la base de datos).
   refresh();
   refreshPie(window.CONTRIB || {});
 })();

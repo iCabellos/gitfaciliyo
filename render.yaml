@@ -1,7 +1,11 @@
-# Blueprint de Render para el PANEL WEB (plan gratuito).
-# Los mensajes programados (precios diarios, WhatsApp semanal, recordatorio
-# mensual) NO corren aquí: los ejecuta GitHub Actions gratis (ver FREE_SETUP.md).
-# Por eso el plan free es suficiente para la web aunque se duerma cuando no la usas.
+# Blueprint de Render: panel web (plan gratuito) + PostgreSQL gratuito.
+# Los datos (snapshots + caché diaria) viven en la base de datos, así son los
+# mismos en móvil, PC y al compartir el enlace. Los mensajes programados
+# (precios, WhatsApp) corren gratis en GitHub Actions (ver app/FREE_SETUP.md).
+databases:
+  - name: patrimonio-db
+    plan: free                # PostgreSQL gratuito gestionado por Render
+
 services:
   - type: web
     name: mi-patrimonio
@@ -10,8 +14,12 @@ services:
     dockerfilePath: ./app/Dockerfile
     dockerContext: ./app
     autoDeploy: true
-    healthCheckPath: /
+    healthCheckPath: /health
     envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: patrimonio-db
+          property: connectionString
       - key: ENABLE_SCHEDULER
         value: "0"            # los jobs van por GitHub Actions, no en la web
       # Opcionales: solo si además quieres RECIBIR PDFs por WhatsApp (vía Twilio).
@@ -19,7 +27,3 @@ services:
         sync: false
       - key: TWILIO_AUTH_TOKEN
         sync: false
-# Nota: el plan free no tiene disco persistente, así que el histórico mensual de la
-# web puede reiniciarse al redesplegar. El histórico de PRECIOS sí persiste porque
-# GitHub Actions lo guarda en el repo. Para histórico web persistente, usa un plan
-# con disco (ver DEPLOY.md).
