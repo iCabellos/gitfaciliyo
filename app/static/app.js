@@ -13,23 +13,11 @@ let BANK_NET = null;        // gasto neto del mes (informativo, no patrimonio)
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);   // YYYY-MM
 
-// Persistencia local: sobrevive a los reinicios del hosting gratuito (Render free
-// no tiene disco), así el histórico mensual y el último estado no se pierden.
-const LS = {
-  snaps() { try { return JSON.parse(localStorage.getItem("mp_snapshots") || "{}"); } catch (e) { return {}; } },
-  saveSnap(m, c, v) { const s = LS.snaps(); (s[m] = s[m] || {})[c] = Math.round(v * 100) / 100; localStorage.setItem("mp_snapshots", JSON.stringify(s)); },
-  contrib() { try { return JSON.parse(localStorage.getItem("mp_contrib") || "{}"); } catch (e) { return {}; } },
-  saveContrib(o) { try { localStorage.setItem("mp_contrib", JSON.stringify(o)); } catch (e) {} },
-};
-window.LS = LS;
-
 function setContrib(label, value, month) {
   CONTRIB[label] = value;
-  LS.saveContrib(CONTRIB);
   renderSummary();
   // Snapshot mensual en la base de datos (compartido entre dispositivos).
   const m = month || thisMonth();
-  LS.saveSnap(m, label, value);
   fetch("/api/snapshot", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ month: m, category: label, value }),
