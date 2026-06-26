@@ -12,6 +12,12 @@ ISIN_RE = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}\d\b")
 MONEY_EU_RE = re.compile(r"^-?\d{1,3}(?:\.\d{3})*,\d{2}\s*[€$]?$|^-?\d+,\d{2}\s*[€$]?$")
 
 
+def to_month(text):
+    """Extrae el mes 'YYYY-MM' de una fecha dd/mm/yyyy o dd.mm.yyyy en el texto."""
+    m = re.search(r"(\d{2})[/.](\d{2})[/.](\d{4})", text or "")
+    return f"{m.group(3)}-{m.group(2)}" if m else None
+
+
 def parse_money(token):
     """Convierte un importe en texto a float.
 

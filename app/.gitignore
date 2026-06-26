@@ -5,3 +5,4 @@ venv/
 *.log
 config.json
 sources/.cache/
+data/

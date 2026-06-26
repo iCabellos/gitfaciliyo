@@ -141,4 +141,5 @@ def parse(path):
         "source": SOURCE, "category": CATEGORY,
         "positions": [p.to_dict() for p in positions],
         "total": total, "currency": "EUR", "warnings": warnings,
+        "month": None,   # el balance es puntual; el front lo asigna al mes actual
     }

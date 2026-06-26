@@ -195,12 +195,29 @@ def _parse_statement(rows):
     return positions, warnings
 
 
+def _statement_month(rows):
+    """Mes del extracto: prioriza la fecha 'a DD.MM.YYYY' (fecha de referencia)."""
+    for r in rows:
+        for c in r:
+            m = re.search(r"\ba\s+(\d{2})\.(\d{2})\.(\d{4})", c)
+            if m:
+                return f"{m.group(3)}-{m.group(2)}"
+    from .common import to_month
+    for r in rows:
+        mo = to_month(" ".join(r))
+        if mo:
+            return mo
+    return None
+
+
 def parse(path):
+    month = None
     if path.lower().endswith(".csv"):
         with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
             positions, warnings = _parse_csv(fh.read())
     else:
         rows = extract_rows(path)
+        month = _statement_month(rows)
         if _looks_like_statement(rows):
             positions, warnings = _parse_statement(rows)
         else:
@@ -213,4 +230,5 @@ def parse(path):
         "total": total,
         "currency": positions[0].currency if positions else "EUR",
         "warnings": warnings,
+        "month": month,
     }

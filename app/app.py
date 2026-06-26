@@ -18,6 +18,7 @@ Fuentes en vivo (API):
 
 import json
 import os
+import re
 import tempfile
 
 from flask import Flask, jsonify, render_template, request
@@ -55,9 +56,54 @@ def _save_upload(file_storage, suffixes):
     return tmp.name
 
 
+_DATA_DIR = os.path.join(_HERE, "data")
+_SNAPSHOTS = os.path.join(_DATA_DIR, "snapshots.json")
+
+
+def _read_json(path, default):
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return default
+
+
+def _write_json(path, obj):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump(obj, fh, indent=2, ensure_ascii=False)
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/api/snapshots", methods=["GET"])
+def api_snapshots_get():
+    """Histórico mensual de patrimonio: { 'YYYY-MM': { categoria: valor } }."""
+    return jsonify(_read_json(_SNAPSHOTS, {}))
+
+
+@app.route("/api/snapshot", methods=["POST"])
+def api_snapshot_post():
+    """Guarda/actualiza el valor de una categoría para un mes concreto."""
+    body = request.get_json(silent=True) or {}
+    month = (body.get("month") or "").strip()
+    category = (body.get("category") or "").strip()
+    value = body.get("value")
+    if not re.match(r"^\d{4}-\d{2}$", month) or not category or not isinstance(value, (int, float)):
+        return jsonify({"error": "Datos inválidos (month=YYYY-MM, category, value)."}), 400
+    snaps = _read_json(_SNAPSHOTS, {})
+    snaps.setdefault(month, {})[category] = round(float(value), 2)
+    _write_json(_SNAPSHOTS, snaps)
+    return jsonify({"ok": True, "snapshots": snaps})
+
+
+@app.route("/api/snapshots/reset", methods=["POST"])
+def api_snapshots_reset():
+    _write_json(_SNAPSHOTS, {})
+    return jsonify({"ok": True})
 
 
 @app.route("/api/config")

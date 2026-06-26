@@ -174,6 +174,19 @@ select:focus { outline: none; border-color: var(--indigo); }
 .status.err { color: var(--red); }
 .warn { color: var(--amber); font-size: 12.5px; margin: 8px 0 0; }
 
+/* ---------- Gráficos ---------- */
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+.chart-card { border: 1px solid var(--line); border-radius: 16px; padding: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, .015)); }
+.chart-wrap { position: relative; height: 300px; margin-top: 10px; }
+.mini-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.mini-card { border: 1px solid var(--line); border-radius: 14px; padding: 14px; height: 150px;
+  display: flex; flex-direction: column; background: rgba(255, 255, 255, .02); }
+.mini-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; }
+.mini-head span { color: var(--muted); }
+.mini-head b { font-family: "Sora", sans-serif; font-size: 15px; }
+.mini-card canvas { flex: 1; min-height: 0; margin-top: 6px; }
+
 footer { text-align: center; color: var(--muted); font-size: 12.5px; padding: 40px 0 10px; }
 footer span { color: var(--ink); font-weight: 600; }
 

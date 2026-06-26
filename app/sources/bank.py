@@ -121,8 +121,10 @@ def analyze(path):
         if best is not None:
             t["suggested_link"] = best["id"]
 
+    months = sorted(_day(r["date"]).strftime("%Y-%m") for r in raw) if raw else []
     return {"period": _period(raw), "transactions": txs,
-            "available_balance": _available_balance(path)}
+            "available_balance": _available_balance(path),
+            "month": months[-1] if months else None}
 
 
 def _period(raw):

@@ -8,9 +8,22 @@ const money = (n, cur = "EUR") =>
 
 // Contribuciones al patrimonio consolidado (por categoría).
 const CONTRIB = {};         // label -> valor en EUR (activos)
+window.CONTRIB = CONTRIB;   // accesible para la vista de gráficos
 let BANK_NET = null;        // gasto neto del mes (informativo, no patrimonio)
 
-function setContrib(label, value) { CONTRIB[label] = value; renderSummary(); }
+const thisMonth = () => new Date().toISOString().slice(0, 7);   // YYYY-MM
+
+function setContrib(label, value, month) {
+  CONTRIB[label] = value;
+  renderSummary();
+  // Persistir snapshot mensual (para el histórico de gráficos).
+  const m = month || thisMonth();
+  fetch("/api/snapshot", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ month: m, category: label, value }),
+  }).then(() => { if (window.Charts) window.Charts.refresh(); }).catch(() => {});
+  if (window.Charts) window.Charts.refreshPie(CONTRIB);
+}
 
 function renderSummary() {
   const entries = Object.entries(CONTRIB);
@@ -108,7 +121,7 @@ function renderPositions(data, target) {
         <td class="num pos">${money(data.total, cur)}</td></tr></tfoot>
     </table>`;
   if (window.AppFX) AppFX.onRender(target);
-  setContrib(data.category, data.total);   // suma al patrimonio consolidado
+  setContrib(data.category, data.total, data.month);   // suma al patrimonio consolidado
 }
 
 // ---- CS:GO (Steam) -----------------------------------------------------
@@ -163,7 +176,7 @@ function renderBank(data, target) {
     <p class="hint">Liga cada bizum al gasto que te devuelven (cena 30 € con dos bizums de 10 € → 10 €).</p>
     <table id="bizumTable"><thead><tr><th>Fecha</th><th class="num">Importe</th><th>Ligar a gasto…</th></tr></thead><tbody></tbody></table>`;
   bankRender();
-  if (BANK.available_balance != null) setContrib("Liquidez (banco)", BANK.available_balance);
+  if (BANK.available_balance != null) setContrib("Liquidez (banco)", BANK.available_balance, BANK.month);
   if (window.AppFX) AppFX.onRender(target);
 }
 
