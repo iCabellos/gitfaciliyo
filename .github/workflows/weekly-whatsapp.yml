@@ -4,7 +4,7 @@ name: WhatsApp semanal (subidas >10%)
 # subieron más del 10% algún día de la semana. Lee el histórico del repo.
 on:
   schedule:
-    - cron: "7 7 * * 1"      # lunes 07:07 UTC ≈ 09:07 Europe/Madrid
+    - cron: "7 17 * * 0"     # domingo 17:07 UTC ≈ 19:07 Europe/Madrid (verano; 18:07 en invierno)
   workflow_dispatch:
 
 jobs:

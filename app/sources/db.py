@@ -26,6 +26,9 @@ def _engine_url():
             url = url.replace("postgres://", "postgresql+psycopg2://", 1)
         elif url.startswith("postgresql://"):
             url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        # Supabase/Neon exigen SSL; lo activamos si no se indicó.
+        if "sslmode=" not in url:
+            url += ("&" if "?" in url else "?") + "sslmode=require"
         return url, False
     os.makedirs(_DATA_DIR, exist_ok=True)
     return "sqlite:///" + os.path.join(_DATA_DIR, "patrimonio.db"), True
@@ -50,7 +53,17 @@ valuation_cache = Table(
     Column("day", String(10)),
     Column("payload", Text),
 )
-_meta.create_all(_engine)
+
+_ready = False
+
+
+def _ensure():
+    """Crea las tablas la primera vez (no en el import, para no romper el arranque
+    si la base de datos tarda un momento en estar disponible)."""
+    global _ready
+    if not _ready:
+        _meta.create_all(_engine)
+        _ready = True
 
 
 def backend():
@@ -59,6 +72,7 @@ def backend():
 
 # ---- snapshots -----------------------------------------------------------
 def set_snapshot(month, category, value):
+    _ensure()
     now = datetime.datetime.utcnow().isoformat(timespec="seconds")
     value = round(float(value), 2)
     with _engine.begin() as conn:
@@ -72,6 +86,7 @@ def set_snapshot(month, category, value):
 
 
 def get_snapshots():
+    _ensure()
     out = {}
     with _engine.connect() as conn:
         for row in conn.execute(select(snapshots.c.month, snapshots.c.category, snapshots.c.value)):
@@ -80,12 +95,14 @@ def get_snapshots():
 
 
 def reset_snapshots():
+    _ensure()
     with _engine.begin() as conn:
         conn.execute(delete(snapshots))
 
 
 # ---- caché diaria de valoraciones ---------------------------------------
 def cache_get_today(key):
+    _ensure()
     today = datetime.date.today().isoformat()
     with _engine.connect() as conn:
         row = conn.execute(select(valuation_cache.c.day, valuation_cache.c.payload)
@@ -99,6 +116,7 @@ def cache_get_today(key):
 
 
 def cache_put(key, payload):
+    _ensure()
     today = datetime.date.today().isoformat()
     blob = json.dumps(payload, ensure_ascii=False)
     with _engine.begin() as conn:
