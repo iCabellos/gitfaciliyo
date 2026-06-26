@@ -1,0 +1,37 @@
+name: Precios diarios (cartas + skins)
+
+# Seguimiento DIARIO de precios. Gratis, sin servidor. Guarda el histórico
+# commiteándolo en el propio repo (app/data/price_history.json).
+on:
+  schedule:
+    - cron: "7 6 * * *"      # 06:07 UTC ≈ 08:07 Europe/Madrid
+  workflow_dispatch:          # permite ejecutarlo a mano desde la pestaña Actions
+
+permissions:
+  contents: write
+
+concurrency:
+  group: track-prices
+  cancel-in-progress: false
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    env:
+      CSFLOAT_API_KEY: ${{ secrets.CSFLOAT_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r app/requirements.txt
+      - name: Registrar precios de hoy
+        working-directory: app
+        run: python -m jobs.track_prices
+      - name: Guardar histórico en el repo
+        run: |
+          git config user.name "patrimonio-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f app/data/price_history.json
+          git commit -m "chore: precios $(date -u +%F)" || { echo "sin cambios"; exit 0; }
+          git push

@@ -79,31 +79,51 @@ def compose_message(gainers, threshold=THRESHOLD):
 
 
 def send_whatsapp(body):
+    """Envía por WhatsApp. Prioriza CallMeBot (gratis); si no, Twilio; si no, simula."""
+    # 1) CallMeBot — gratuito para uso personal.
+    apikey = os.environ.get("CALLMEBOT_APIKEY", "").strip()
+    phone = "".join(ch for ch in os.environ.get("CALLMEBOT_PHONE", "") if ch.isdigit())
+    if apikey and phone:
+        url = ("https://api.callmebot.com/whatsapp.php?"
+               + urllib.parse.urlencode({"phone": phone, "apikey": apikey, "text": body}))
+        try:
+            with urllib.request.urlopen(url, timeout=30) as resp:
+                print(f"WhatsApp enviado por CallMeBot (HTTP {resp.status}).")
+            return True
+        except Exception as exc:  # noqa: BLE001
+            print("CallMeBot falló, intento otra vía:", exc)
+
+    # 2) Twilio.
     sid = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
     token = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
     sender = os.environ.get("TWILIO_WHATSAPP_FROM", "").strip()
     to = os.environ.get("ALERT_WHATSAPP_TO", "").strip()
-    if not all([sid, token, sender, to]):
-        print("[simulación] Sin credenciales de Twilio; no se envía. Mensaje:\n")
-        print(body)
-        return False
-    url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
-    data = urllib.parse.urlencode({"From": sender, "To": to, "Body": body}).encode()
-    auth = base64.b64encode(f"{sid}:{token}".encode()).decode()
-    req = urllib.request.Request(url, data=data, method="POST", headers={
-        "Authorization": "Basic " + auth,
-        "Content-Type": "application/x-www-form-urlencoded",
-    })
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        print(f"WhatsApp enviado (HTTP {resp.status}).")
-    return True
+    if all([sid, token, sender, to]):
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
+        data = urllib.parse.urlencode({"From": sender, "To": to, "Body": body}).encode()
+        auth = base64.b64encode(f"{sid}:{token}".encode()).decode()
+        req = urllib.request.Request(url, data=data, method="POST", headers={
+            "Authorization": "Basic " + auth,
+            "Content-Type": "application/x-www-form-urlencoded",
+        })
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            print(f"WhatsApp enviado por Twilio (HTTP {resp.status}).")
+        return True
+
+    # 3) Sin credenciales: modo simulación.
+    print("[simulación] Sin credenciales de WhatsApp; no se envía. Mensaje:\n")
+    print(body)
+    return False
 
 
 def main():
     history = _read(HISTORY, {})
     gainers = weekly_gainers(history)
-    body = compose_message(gainers)
-    send_whatsapp(body)
+    # Por defecto no se envía si no hay subidas (evita ruido). ALERT_SEND_EMPTY=1 lo fuerza.
+    if not gainers and os.environ.get("ALERT_SEND_EMPTY", "0") != "1":
+        print("Sin subidas >umbral esta semana; no se envía WhatsApp.")
+        return gainers
+    send_whatsapp(compose_message(gainers))
     return gainers
 
 

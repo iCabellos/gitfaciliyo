@@ -18,13 +18,16 @@ from jobs.weekly_whatsapp import send_whatsapp   # noqa: E402
 
 def compose_message():
     mes = datetime.date.today().strftime("%m/%Y")
+    panel = os.environ.get("APP_URL", "").strip()
+    donde = (f"Súbelos en el panel: {panel}" if panel
+             else "Súbelos en el panel web (o por WhatsApp si tienes el intake de Twilio activado).")
     return (
         f"🗓️ *Recordatorio mensual ({mes})*\n\n"
-        "Adjúntame los informes de este mes para actualizar tu patrimonio:\n"
+        "Adjunta los informes de este mes para actualizar tu patrimonio:\n"
         "🏦 Extracto del banco (PDF)\n"
         "📈 Trade Republic — patrimonio neto (PDF)\n"
         "🪙 Nexo — balances (CSV/PDF)\n\n"
-        "Puedes *enviarme los PDF aquí mismo por WhatsApp* y los proceso al momento. 📎\n"
+        f"📎 {donde}\n"
         "Mi patrimonio · recordatorio automático"
     )
 

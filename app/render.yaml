@@ -1,32 +1,25 @@
-# Blueprint de Render — despliegue de "Mi patrimonio" con un clic.
-# Una instancia SIEMPRE ACTIVA con disco persistente: la app sirve la web y el
-# scheduler en proceso hace el seguimiento diario de precios y el WhatsApp semanal.
+# Blueprint de Render para el PANEL WEB (plan gratuito).
+# Los mensajes programados (precios diarios, WhatsApp semanal, recordatorio
+# mensual) NO corren aquí: los ejecuta GitHub Actions gratis (ver FREE_SETUP.md).
+# Por eso el plan free es suficiente para la web aunque se duerma cuando no la usas.
 services:
   - type: web
     name: mi-patrimonio
     runtime: docker
-    plan: starter            # NO uses 'free': se duerme y el scheduler no dispararía.
+    plan: free                # gratis; se duerme al estar inactiva y despierta al abrirla
     dockerfilePath: ./app/Dockerfile
     dockerContext: ./app
     autoDeploy: true
     healthCheckPath: /
-    disk:
-      name: patrimonio-data
-      mountPath: /data       # coincide con PATRIMONIO_DATA_DIR del Dockerfile
-      sizeGB: 1
     envVars:
       - key: ENABLE_SCHEDULER
-        value: "1"
-      - key: SCHEDULER_TZ
-        value: Europe/Madrid
-      # Rellena estas en el panel de Render (Environment) — no las pongas en git:
+        value: "0"            # los jobs van por GitHub Actions, no en la web
+      # Opcionales: solo si además quieres RECIBIR PDFs por WhatsApp (vía Twilio).
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
         sync: false
-      - key: TWILIO_WHATSAPP_FROM
-        sync: false
-      - key: ALERT_WHATSAPP_TO
-        sync: false
-      - key: CSFLOAT_API_KEY
-        sync: false
+# Nota: el plan free no tiene disco persistente, así que el histórico mensual de la
+# web puede reiniciarse al redesplegar. El histórico de PRECIOS sí persiste porque
+# GitHub Actions lo guarda en el repo. Para histórico web persistente, usa un plan
+# con disco (ver DEPLOY.md).

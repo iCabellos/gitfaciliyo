@@ -1,0 +1,25 @@
+name: WhatsApp semanal (subidas >10%)
+
+# Cada lunes avisa por WhatsApp (CallMeBot, gratis) de las cartas/skins que
+# subieron más del 10% algún día de la semana. Lee el histórico del repo.
+on:
+  schedule:
+    - cron: "7 7 * * 1"      # lunes 07:07 UTC ≈ 09:07 Europe/Madrid
+  workflow_dispatch:
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    env:
+      CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+      CALLMEBOT_PHONE: ${{ secrets.CALLMEBOT_PHONE || '34640253466' }}
+      ALERT_THRESHOLD: "10"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r app/requirements.txt
+      - name: Calcular subidas y enviar WhatsApp
+        working-directory: app
+        run: python -m jobs.weekly_whatsapp

@@ -50,6 +50,7 @@ def _write(path, obj):
 
 def load_watchlist():
     for path in (os.path.join(DATA_DIR, "watchlist.json"),
+                 os.path.join(HERE, "watchlist.json"),
                  os.path.join(HERE, "config.json"),
                  os.path.join(HERE, "watchlist.example.json")):
         data = _read(path, None)
