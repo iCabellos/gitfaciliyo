@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.log
+config.json
+sources/.cache/
+data/
+.env
+# watchlist.json SÍ se versiona (lista de cartas/skins; no es secreta) para que
+# GitHub Actions la use. Si prefieres no subirla, descomenta la línea siguiente:
+# watchlist.json

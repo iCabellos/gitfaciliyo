@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es" class="js">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi patrimonio · panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <!-- Fondo animado con parallax (aurora + rejilla) -->
+  <div class="bg" aria-hidden="true">
+    <div class="blob blob-a"></div>
+    <div class="blob blob-b"></div>
+    <div class="blob blob-c"></div>
+    <div class="grid"></div>
+    <div class="noise"></div>
+  </div>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-inner">
+      <span class="badge reveal">● Patrimonio en tiempo real</span>
+      <h1 class="hero-title reveal">Mi <span class="grad">patrimonio</span></h1>
+      <p class="hero-sub reveal">Banco, Trade Republic, Nexo, skins de CS:GO y cartas Magic
+         — todo consolidado en una sola vista, con valoración en vivo.</p>
+      <div class="hero-chips reveal">
+        <span class="chip">🏦 Banco</span>
+        <span class="chip">📈 Trade Republic</span>
+        <span class="chip">🪙 Nexo</span>
+        <span class="chip">🔫 CS:GO</span>
+        <span class="chip">🃏 Magic</span>
+      </div>
+    </div>
+    <div class="scroll-cue reveal"><span></span></div>
+  </header>
+
+  <main>
+    <!-- RESUMEN CONSOLIDADO -->
+    <section class="panel glass reveal" id="summarySection">
+      <div class="panel-head">
+        <div class="icon-chip">📊</div>
+        <div>
+          <h2>Patrimonio consolidado</h2>
+          <p class="sub2">Se actualiza a medida que cargas cada fuente.</p>
+        </div>
+      </div>
+      <div class="cards" id="summary"></div>
+      <p class="hint" id="summaryHint">Carga al menos una fuente para ver el total.</p>
+    </section>
+
+    <!-- NAV -->
+    <nav class="tabs glass reveal" id="tabs">
+      <button data-tab="graficos" class="active"><span>📊</span> Gráficos</button>
+      <button data-tab="banco"><span>🏦</span> Banco / Gastos</button>
+      <button data-tab="tr"><span>📈</span> Trade Republic</button>
+      <button data-tab="nexo"><span>🪙</span> Nexo</button>
+      <button data-tab="csgo"><span>🔫</span> CS:GO Skins</button>
+      <button data-tab="magic"><span>🃏</span> Cartas Magic</button>
+    </nav>
+
+    <!-- GRÁFICOS -->
+    <section class="panel glass tabpane active" id="pane-graficos">
+      <div class="panel-head">
+        <div class="icon-chip">📊</div>
+        <div><h2>Gráficos</h2>
+          <p class="sub2">Reparto del patrimonio y su evolución mensual (según la fecha de cada documento).</p></div>
+      </div>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <h3>Reparto del patrimonio</h3>
+          <div class="chart-wrap"><canvas id="pieChart"></canvas></div>
+          <p class="hint" id="pieEmpty">Carga alguna fuente para ver el reparto.</p>
+        </div>
+        <div class="chart-card">
+          <h3>Patrimonio total por mes</h3>
+          <div class="chart-wrap"><canvas id="totalChart"></canvas></div>
+          <p class="hint" id="monthlyEmpty">Aún no hay histórico mensual. Sube documentos de distintos meses.</p>
+        </div>
+      </div>
+      <h3 style="margin-top:24px">Evolución por categoría</h3>
+      <div class="mini-grid" id="miniCharts"></div>
+    </section>
+
+    <!-- BANCO -->
+    <section class="panel glass tabpane" id="pane-banco">
+      <div class="panel-head">
+        <div class="icon-chip">🏦</div>
+        <div><h2>Banco · desglose de gastos netos</h2>
+          <p class="sub2">Las inversiones (Nexo) no son gasto y los bizums-devolución reducen el gasto.</p></div>
+      </div>
+      <form class="row" data-upload="/api/bank" data-field="file" data-target="bankResult">
+        <label class="filebox"><input type="file" accept="application/pdf" hidden>
+          <span>Arrastra o elige el PDF del extracto bancario</span></label>
+        <button type="submit">Analizar</button>
+      </form>
+      <div id="bankResult"></div>
+    </section>
+
+    <!-- TRADE REPUBLIC -->
+    <section class="panel glass tabpane" id="pane-tr">
+      <div class="panel-head">
+        <div class="icon-chip">📈</div>
+        <div><h2>Trade Republic · acciones y ETFs</h2>
+          <p class="sub2">Reconoce el «Extracto del patrimonio neto» en PDF. CSV: <code>name,isin,quantity,price,value</code>.</p></div>
+      </div>
+      <form class="row" data-upload="/api/trade-republic" data-field="file" data-target="trResult">
+        <label class="filebox"><input type="file" accept=".pdf,.csv" hidden>
+          <span>Arrastra o elige el PDF o CSV de Trade Republic</span></label>
+        <button type="submit">Cargar</button>
+      </form>
+      <div id="trResult"></div>
+    </section>
+
+    <!-- NEXO -->
+    <section class="panel glass tabpane" id="pane-nexo">
+      <div class="panel-head">
+        <div class="icon-chip">🪙</div>
+        <div><h2>Nexo · cripto</h2>
+          <p class="sub2">Informe o balances. CSV normalizado: <code>asset,amount,value</code>.</p></div>
+      </div>
+      <form class="row" data-upload="/api/nexo" data-field="file" data-target="nexoResult">
+        <label class="filebox"><input type="file" accept=".csv,.pdf" hidden>
+          <span>Arrastra o elige el CSV o PDF de Nexo</span></label>
+        <button type="submit">Cargar</button>
+      </form>
+      <div id="nexoResult"></div>
+    </section>
+
+    <!-- CS:GO -->
+    <section class="panel glass tabpane" id="pane-csgo">
+      <div class="panel-head">
+        <div class="icon-chip">🔫</div>
+        <div><h2>CS:GO · skins del inventario de Steam</h2>
+          <p class="sub2">Inventario en <strong>público</strong>. Valoración con el Steam Market (EUR).</p></div>
+      </div>
+      <form class="row" id="steamForm">
+        <input type="text" id="steamid" placeholder="SteamID64 (p. ej. 7656119…)" />
+        <button type="submit">Conectar inventario</button>
+      </form>
+      <div id="steamResult"></div>
+    </section>
+
+    <!-- MAGIC -->
+    <section class="panel glass tabpane" id="pane-magic">
+      <div class="panel-head">
+        <div class="icon-chip">🃏</div>
+        <div><h2>Magic · mazos de Moxfield</h2>
+          <p class="sub2">Precio en tiempo real con Scryfall. Pega la URL del mazo o la decklist.</p></div>
+      </div>
+      <form id="magicForm">
+        <div class="row">
+          <input type="text" id="moxfield" placeholder="URL o ID de mazo de Moxfield (opcional)" />
+          <button type="submit">Valorar</button>
+        </div>
+        <textarea id="decklist" rows="6"
+          placeholder="…o pega aquí la decklist:&#10;1 Sol Ring&#10;1 Lightning Bolt&#10;1 Counterspell"></textarea>
+      </form>
+      <div id="magicResult"></div>
+    </section>
+
+    <footer class="reveal">
+      <span>Mi patrimonio</span> · datos locales · valoración en vivo con Steam Market y Scryfall
+    </footer>
+  </main>
+
+  <script src="{{ url_for('static', filename='vendor/gsap.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/ScrollTrigger.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/lenis.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='charts.js') }}"></script>
+  <script src="{{ url_for('static', filename='anim.js') }}"></script>
+</body>
+</html>

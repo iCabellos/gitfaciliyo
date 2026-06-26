@@ -1,0 +1,24 @@
+name: Recordatorio mensual (adjuntar PDFs)
+
+# El día 1 de cada mes te recuerda por WhatsApp adjuntar los PDFs del banco,
+# Trade Republic y Nexo (puedes mandarlos por WhatsApp y el webhook los procesa).
+on:
+  schedule:
+    - cron: "7 8 1 * *"     # día 1, 08:07 UTC ≈ 10:07 Europe/Madrid
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    env:
+      CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+      CALLMEBOT_PHONE: ${{ secrets.CALLMEBOT_PHONE || '34640253466' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r app/requirements.txt
+      - name: Enviar recordatorio
+        working-directory: app
+        run: python -m jobs.monthly_reminder

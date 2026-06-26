@@ -1,0 +1,25 @@
+# Blueprint de Render para el PANEL WEB (plan gratuito).
+# Los mensajes programados (precios diarios, WhatsApp semanal, recordatorio
+# mensual) NO corren aquí: los ejecuta GitHub Actions gratis (ver FREE_SETUP.md).
+# Por eso el plan free es suficiente para la web aunque se duerma cuando no la usas.
+services:
+  - type: web
+    name: mi-patrimonio
+    runtime: docker
+    plan: free                # gratis; se duerme al estar inactiva y despierta al abrirla
+    dockerfilePath: ./app/Dockerfile
+    dockerContext: ./app
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: ENABLE_SCHEDULER
+        value: "0"            # los jobs van por GitHub Actions, no en la web
+      # Opcionales: solo si además quieres RECIBIR PDFs por WhatsApp (vía Twilio).
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+# Nota: el plan free no tiene disco persistente, así que el histórico mensual de la
+# web puede reiniciarse al redesplegar. El histórico de PRECIOS sí persiste porque
+# GitHub Actions lo guarda en el repo. Para histórico web persistente, usa un plan
+# con disco (ver DEPLOY.md).
