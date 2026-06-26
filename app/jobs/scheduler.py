@@ -26,13 +26,16 @@ def start_scheduler():
         print("APScheduler no instalado; scheduler desactivado.")
         return
 
-    from jobs import track_prices, weekly_whatsapp
+    from jobs import track_prices, weekly_whatsapp, monthly_reminder
 
     sched = BackgroundScheduler(timezone=_TZ)
     sched.add_job(track_prices.main, CronTrigger(hour=8, minute=7),
                   id="track_prices", replace_existing=True, misfire_grace_time=3600)
     sched.add_job(weekly_whatsapp.main, CronTrigger(day_of_week="mon", hour=9, minute=7),
                   id="weekly_whatsapp", replace_existing=True, misfire_grace_time=3600)
+    sched.add_job(monthly_reminder.main, CronTrigger(day=1, hour=10, minute=7),
+                  id="monthly_reminder", replace_existing=True, misfire_grace_time=86400)
     sched.start()
     _started = True
-    print(f"Scheduler activo ({_TZ}): precios diarios 08:07, WhatsApp lunes 09:07.")
+    print(f"Scheduler activo ({_TZ}): precios 08:07, WhatsApp semanal lun 09:07, "
+          "recordatorio mensual día 1 10:07.")

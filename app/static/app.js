@@ -103,7 +103,7 @@ function renderPositions(data, target) {
   const cur = data.currency || "EUR";
   const rows = data.positions.map((p) => {
     const icon = p.extra && p.extra.icon ? `<img class="thumb" src="${p.extra.icon}">` : "";
-    const sub = p.extra && (p.extra.isin || p.extra.asset || p.extra.deck || p.extra.type) || "";
+    const sub = p.extra && (p.extra.tag || p.extra.isin || p.extra.asset || p.extra.deck || p.extra.type) || "";
     return `<tr>
       <td>${icon}${p.name}${sub ? ` <span class="tag">${sub}</span>` : ""}</td>
       <td class="num muted">${p.quantity.toLocaleString("es-ES")}</td>

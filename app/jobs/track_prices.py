@@ -63,14 +63,27 @@ def load_watchlist():
 def card_prices(names):
     if not names:
         return {}
-    prices, _ = moxfield.price_cards([{"name": n, "quantity": 1, "scryfall_id": None} for n in names])
+    cards = [_card_from_entry(n) for n in names]
+    prices, _ = moxfield.price_cards(cards)
     out = {}
-    for n in names:
-        eur, usd = prices.get(("name", n), (None, None))
-        val = eur if eur is not None else usd
-        if val is not None:
-            out["card:" + n] = round(val, 2)
+    for n, c in zip(names, cards):
+        pr = prices.get(moxfield._ident_key(c), {})
+        unit, _cur = moxfield._pick_price(pr, bool(c.get("foil")))
+        if unit is not None:
+            out["card:" + (n if isinstance(n, str) else c["name"])] = round(unit, 2)
     return out
+
+
+def _card_from_entry(entry):
+    """Una entrada de watchlist puede ser texto ('Sol Ring') o un objeto con
+    set/colector/foil para fijar el arte alternativo exacto."""
+    if isinstance(entry, dict):
+        return {"name": entry.get("name", ""), "quantity": 1,
+                "scryfall_id": entry.get("scryfall_id"),
+                "set": entry.get("set"), "collector": entry.get("collector"),
+                "foil": entry.get("foil", False)}
+    return {"name": entry, "quantity": 1, "scryfall_id": None,
+            "set": None, "collector": None, "foil": False}
 
 
 def _csfloat_price(name, api_key):

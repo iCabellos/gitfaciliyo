@@ -85,6 +85,13 @@ def api_snapshots_get():
     return jsonify(_read_json(_SNAPSHOTS, {}))
 
 
+def _record_snapshot(month, category, value):
+    snaps = _read_json(_SNAPSHOTS, {})
+    snaps.setdefault(month, {})[category] = round(float(value), 2)
+    _write_json(_SNAPSHOTS, snaps)
+    return snaps
+
+
 @app.route("/api/snapshot", methods=["POST"])
 def api_snapshot_post():
     """Guarda/actualiza el valor de una categoría para un mes concreto."""
@@ -94,10 +101,7 @@ def api_snapshot_post():
     value = body.get("value")
     if not re.match(r"^\d{4}-\d{2}$", month) or not category or not isinstance(value, (int, float)):
         return jsonify({"error": "Datos inválidos (month=YYYY-MM, category, value)."}), 400
-    snaps = _read_json(_SNAPSHOTS, {})
-    snaps.setdefault(month, {})[category] = round(float(value), 2)
-    _write_json(_SNAPSHOTS, snaps)
-    return jsonify({"ok": True, "snapshots": snaps})
+    return jsonify({"ok": True, "snapshots": _record_snapshot(month, category, value)})
 
 
 @app.route("/api/snapshots/reset", methods=["POST"])
@@ -170,6 +174,107 @@ def api_magic():
         return jsonify(moxfield.analyze(reference=reference, decklist=decklist))
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 502
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp entrante: recibir y procesar PDFs enviados por WhatsApp (Twilio).
+# ---------------------------------------------------------------------------
+import base64                       # noqa: E402
+import datetime                     # noqa: E402
+import urllib.request               # noqa: E402
+
+from sources.common import extract_rows   # noqa: E402
+
+
+def _detect_kind(path):
+    """Decide si un documento es del banco, Trade Republic o Nexo."""
+    name = path.lower()
+    if name.endswith(".csv"):
+        with open(path, encoding="utf-8-sig", errors="replace") as fh:
+            head = fh.read(2000).lower()
+        if any(w in head for w in ("asset", "currency", "coin", "crypto")):
+            return "nexo"
+        return "tr"
+    text = " ".join(c for row in extract_rows(path) for c in row)
+    low = text.lower()
+    if "trade republic" in low or "patrimonio neto" in low or "cuenta de valores" in low:
+        return "tr"
+    if "nexo" in low and "bizum" not in low:
+        return "nexo"
+    # Banco: bizum, saldo disponible o un IBAN sin pinta de cartera de valores.
+    return "bank"
+
+
+def _process_document(path):
+    """Procesa un documento, guarda el snapshot mensual y devuelve un resumen."""
+    kind = _detect_kind(path)
+    this_month = datetime.date.today().strftime("%Y-%m")
+    if kind == "tr":
+        r = trade_republic.parse(path)
+        month = r.get("month") or this_month
+        _record_snapshot(month, r["category"], r["total"])
+        return f"📈 Trade Republic: {r['total']:.2f} € guardado para {month} ({len(r['positions'])} posiciones)."
+    if kind == "nexo":
+        r = nexo.parse(path)
+        month = r.get("month") or this_month
+        _record_snapshot(month, r["category"], r["total"])
+        return f"🪙 Nexo: {r['total']:.2f} € guardado para {month}."
+    r = bank.analyze(path)
+    month = r.get("month") or this_month
+    if r.get("available_balance") is not None:
+        _record_snapshot(month, "Liquidez (banco)", r["available_balance"])
+    return (f"🏦 Banco: saldo {r.get('available_balance', 0):.2f} € guardado para {month} "
+            f"({len(r['transactions'])} movimientos).")
+
+
+def _download_twilio_media(url):
+    sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
+    token = os.environ.get("TWILIO_AUTH_TOKEN", "")
+    req = urllib.request.Request(url)
+    if sid and token:
+        auth = base64.b64encode(f"{sid}:{token}".encode()).decode()
+        req.add_header("Authorization", "Basic " + auth)
+    with urllib.request.urlopen(req, timeout=40) as resp:
+        return resp.read()
+
+
+def _twiml(message):
+    xml = ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+           f"<Response><Message>{message}</Message></Response>")
+    return app.response_class(xml, mimetype="text/xml")
+
+
+@app.route("/webhook/whatsapp", methods=["POST"])
+def whatsapp_inbound():
+    """Webhook de Twilio: procesa PDFs/CSV adjuntos enviados por WhatsApp."""
+    try:
+        num_media = int(request.form.get("NumMedia", "0"))
+    except ValueError:
+        num_media = 0
+    if not num_media:
+        return _twiml("👋 Envíame el PDF del banco, de Trade Republic o de Nexo (o un CSV) "
+                      "y lo añado a tu patrimonio. También valoro tus cartas y skins desde la web.")
+
+    replies = []
+    for i in range(num_media):
+        ctype = request.form.get(f"MediaContentType{i}", "")
+        url = request.form.get(f"MediaUrl{i}", "")
+        if not url:
+            continue
+        suffix = ".csv" if "csv" in ctype or "excel" in ctype else ".pdf"
+        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        try:
+            tmp.write(_download_twilio_media(url))
+            tmp.close()
+            replies.append(_process_document(tmp.name))
+        except Exception as exc:  # noqa: BLE001
+            replies.append(f"⚠️ No pude procesar un adjunto: {exc}")
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
+    return _twiml("\n".join(replies) or "No encontré adjuntos válidos.")
 
 
 # Programador en proceso para la versión desplegada (instancia siempre activa).
