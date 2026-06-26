@@ -51,8 +51,24 @@ guarda en el propio repositorio. La web (gráficos + subir PDFs) es opcional en
 
 En Render: **New → Blueprint** apuntando al repo (`render.yaml` en la raíz, plan *free*).
 Te da una URL pública para ver los gráficos y subir PDFs. Se duerme cuando no la
-usas y despierta al abrirla. *(El histórico de precios no depende de la web: vive
-en el repo gracias a Actions.)*
+usas y despierta al abrirla.
+
+### Base de datos gratis (Supabase) — datos compartidos en móvil/PC/amigos
+
+La app guarda el patrimonio en PostgreSQL si defines `DATABASE_URL` (si no, usa
+SQLite efímero). Con una base gratuita externa los datos persisten y son los
+mismos en cualquier dispositivo:
+
+1. Crea un proyecto gratis en **https://supabase.com** (o **https://neon.tech**).
+2. En Supabase → *Project Settings → Database → Connection string* → copia la
+   **URI del Pooler** (la de `...pooler.supabase.com`, compatible con IPv4;
+   la conexión directa NO funciona desde Render). Formato:
+   `postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`
+3. En Render → servicio **mi-patrimonio** → *Environment* → añade
+   `DATABASE_URL` = esa URI → **Save** (redeploya). La app crea las tablas sola.
+
+> El SSL se activa automáticamente. Si la conexión fallara, prueba la cadena del
+> *Session pooler* (puerto 5432) en lugar del *Transaction pooler* (6543).
 
 ## ¿Recibir PDFs por WhatsApp?
 
