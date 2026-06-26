@@ -28,6 +28,7 @@ function renderSummary() {
   }
   el.innerHTML = html;
   $("#summaryHint").style.display = "none";
+  if (window.AppFX) AppFX.onRender(el);
 }
 
 // ---- pestañas ----------------------------------------------------------
@@ -106,6 +107,7 @@ function renderPositions(data, target) {
       <tfoot><tr><td colspan="3">Total ${data.source}</td>
         <td class="num pos">${money(data.total, cur)}</td></tr></tfoot>
     </table>`;
+  if (window.AppFX) AppFX.onRender(target);
   setContrib(data.category, data.total);   // suma al patrimonio consolidado
 }
 
@@ -162,6 +164,7 @@ function renderBank(data, target) {
     <table id="bizumTable"><thead><tr><th>Fecha</th><th class="num">Importe</th><th>Ligar a gasto…</th></tr></thead><tbody></tbody></table>`;
   bankRender();
   if (BANK.available_balance != null) setContrib("Liquidez (banco)", BANK.available_balance);
+  if (window.AppFX) AppFX.onRender(target);
 }
 
 const bById = (id) => BANK.transactions.find((t) => t.id === id);

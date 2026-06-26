@@ -1,100 +1,151 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="js">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mi patrimonio</title>
+  <title>Mi patrimonio · panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-  <header>
-    <h1>📊 Mi patrimonio</h1>
-    <p class="sub">Todo en uno: banco, Trade Republic, Nexo, skins de CS:GO y cartas Magic.
-       Sube los informes mensuales y conecta tus inventarios en vivo.</p>
+  <!-- Fondo animado con parallax (aurora + rejilla) -->
+  <div class="bg" aria-hidden="true">
+    <div class="blob blob-a"></div>
+    <div class="blob blob-b"></div>
+    <div class="blob blob-c"></div>
+    <div class="grid"></div>
+    <div class="noise"></div>
+  </div>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-inner">
+      <span class="badge reveal">● Patrimonio en tiempo real</span>
+      <h1 class="hero-title reveal">Mi <span class="grad">patrimonio</span></h1>
+      <p class="hero-sub reveal">Banco, Trade Republic, Nexo, skins de CS:GO y cartas Magic
+         — todo consolidado en una sola vista, con valoración en vivo.</p>
+      <div class="hero-chips reveal">
+        <span class="chip">🏦 Banco</span>
+        <span class="chip">📈 Trade Republic</span>
+        <span class="chip">🪙 Nexo</span>
+        <span class="chip">🔫 CS:GO</span>
+        <span class="chip">🃏 Magic</span>
+      </div>
+    </div>
+    <div class="scroll-cue reveal"><span></span></div>
   </header>
 
-  <!-- Resumen consolidado -->
-  <section class="card">
-    <h2>Patrimonio consolidado</h2>
-    <div class="cards" id="summary"></div>
-    <p class="hint" id="summaryHint">Carga al menos una fuente para ver el total.</p>
-  </section>
-
-  <nav class="tabs" id="tabs">
-    <button data-tab="banco" class="active">🏦 Banco / Gastos</button>
-    <button data-tab="tr">📈 Trade Republic</button>
-    <button data-tab="nexo">🪙 Nexo</button>
-    <button data-tab="csgo">🔫 CS:GO Skins</button>
-    <button data-tab="magic">🃏 Cartas Magic</button>
-  </nav>
-
-  <!-- BANCO -->
-  <section class="tabpane card active" id="pane-banco">
-    <h2>Banco · desglose de gastos netos</h2>
-    <p class="hint">Las inversiones (Nexo) no son gasto y los bizums recibidos que sean
-       devoluciones reducen el gasto. Liga cada bizum a su gasto abajo.</p>
-    <form class="row" data-upload="/api/bank" data-field="file" data-target="bankResult">
-      <label class="filebox"><input type="file" accept="application/pdf" hidden>
-        <span>PDF del extracto bancario</span></label>
-      <button type="submit">Analizar</button>
-    </form>
-    <div id="bankResult"></div>
-  </section>
-
-  <!-- TRADE REPUBLIC -->
-  <section class="tabpane card" id="pane-tr">
-    <h2>Trade Republic · acciones y ETFs</h2>
-    <p class="hint">Sube el informe mensual (PDF o CSV). Formato CSV normalizado:
-       <code>name,isin,quantity,price,value</code>.</p>
-    <form class="row" data-upload="/api/trade-republic" data-field="file" data-target="trResult">
-      <label class="filebox"><input type="file" accept=".pdf,.csv" hidden>
-        <span>PDF o CSV de Trade Republic</span></label>
-      <button type="submit">Cargar</button>
-    </form>
-    <div id="trResult"></div>
-  </section>
-
-  <!-- NEXO -->
-  <section class="tabpane card" id="pane-nexo">
-    <h2>Nexo · cripto</h2>
-    <p class="hint">Sube el informe/balances (CSV o PDF). Formato CSV normalizado:
-       <code>asset,amount,value</code>.</p>
-    <form class="row" data-upload="/api/nexo" data-field="file" data-target="nexoResult">
-      <label class="filebox"><input type="file" accept=".csv,.pdf" hidden>
-        <span>CSV o PDF de Nexo</span></label>
-      <button type="submit">Cargar</button>
-    </form>
-    <div id="nexoResult"></div>
-  </section>
-
-  <!-- CS:GO -->
-  <section class="tabpane card" id="pane-csgo">
-    <h2>CS:GO · skins del inventario de Steam</h2>
-    <p class="hint">Tu inventario de Steam debe estar en <strong>público</strong>.
-       Se valora con el Steam Market (EUR).</p>
-    <form class="row" id="steamForm">
-      <input type="text" id="steamid" placeholder="SteamID64 (p. ej. 7656119...)" />
-      <button type="submit">Conectar inventario</button>
-    </form>
-    <div id="steamResult"></div>
-  </section>
-
-  <!-- MAGIC -->
-  <section class="tabpane card" id="pane-magic">
-    <h2>Magic · mazos de Moxfield (precio en vivo con Scryfall)</h2>
-    <p class="hint">Pega la URL/ID de un mazo público de Moxfield, o pega la decklist
-       exportada (más fiable). El precio se pide en tiempo real a Scryfall.</p>
-    <form id="magicForm">
-      <div class="row">
-        <input type="text" id="moxfield" placeholder="URL o ID de mazo de Moxfield (opcional)" />
-        <button type="submit">Valorar</button>
+  <main>
+    <!-- RESUMEN CONSOLIDADO -->
+    <section class="panel glass reveal" id="summarySection">
+      <div class="panel-head">
+        <div class="icon-chip">📊</div>
+        <div>
+          <h2>Patrimonio consolidado</h2>
+          <p class="sub2">Se actualiza a medida que cargas cada fuente.</p>
+        </div>
       </div>
-      <textarea id="decklist" rows="6"
-        placeholder="…o pega aquí la decklist:&#10;1 Sol Ring&#10;1 Lightning Bolt&#10;1 Counterspell"></textarea>
-    </form>
-    <div id="magicResult"></div>
-  </section>
+      <div class="cards" id="summary"></div>
+      <p class="hint" id="summaryHint">Carga al menos una fuente para ver el total.</p>
+    </section>
 
+    <!-- NAV -->
+    <nav class="tabs glass reveal" id="tabs">
+      <button data-tab="banco" class="active"><span>🏦</span> Banco / Gastos</button>
+      <button data-tab="tr"><span>📈</span> Trade Republic</button>
+      <button data-tab="nexo"><span>🪙</span> Nexo</button>
+      <button data-tab="csgo"><span>🔫</span> CS:GO Skins</button>
+      <button data-tab="magic"><span>🃏</span> Cartas Magic</button>
+    </nav>
+
+    <!-- BANCO -->
+    <section class="panel glass tabpane active" id="pane-banco">
+      <div class="panel-head">
+        <div class="icon-chip">🏦</div>
+        <div><h2>Banco · desglose de gastos netos</h2>
+          <p class="sub2">Las inversiones (Nexo) no son gasto y los bizums-devolución reducen el gasto.</p></div>
+      </div>
+      <form class="row" data-upload="/api/bank" data-field="file" data-target="bankResult">
+        <label class="filebox"><input type="file" accept="application/pdf" hidden>
+          <span>Arrastra o elige el PDF del extracto bancario</span></label>
+        <button type="submit">Analizar</button>
+      </form>
+      <div id="bankResult"></div>
+    </section>
+
+    <!-- TRADE REPUBLIC -->
+    <section class="panel glass tabpane" id="pane-tr">
+      <div class="panel-head">
+        <div class="icon-chip">📈</div>
+        <div><h2>Trade Republic · acciones y ETFs</h2>
+          <p class="sub2">Reconoce el «Extracto del patrimonio neto» en PDF. CSV: <code>name,isin,quantity,price,value</code>.</p></div>
+      </div>
+      <form class="row" data-upload="/api/trade-republic" data-field="file" data-target="trResult">
+        <label class="filebox"><input type="file" accept=".pdf,.csv" hidden>
+          <span>Arrastra o elige el PDF o CSV de Trade Republic</span></label>
+        <button type="submit">Cargar</button>
+      </form>
+      <div id="trResult"></div>
+    </section>
+
+    <!-- NEXO -->
+    <section class="panel glass tabpane" id="pane-nexo">
+      <div class="panel-head">
+        <div class="icon-chip">🪙</div>
+        <div><h2>Nexo · cripto</h2>
+          <p class="sub2">Informe o balances. CSV normalizado: <code>asset,amount,value</code>.</p></div>
+      </div>
+      <form class="row" data-upload="/api/nexo" data-field="file" data-target="nexoResult">
+        <label class="filebox"><input type="file" accept=".csv,.pdf" hidden>
+          <span>Arrastra o elige el CSV o PDF de Nexo</span></label>
+        <button type="submit">Cargar</button>
+      </form>
+      <div id="nexoResult"></div>
+    </section>
+
+    <!-- CS:GO -->
+    <section class="panel glass tabpane" id="pane-csgo">
+      <div class="panel-head">
+        <div class="icon-chip">🔫</div>
+        <div><h2>CS:GO · skins del inventario de Steam</h2>
+          <p class="sub2">Inventario en <strong>público</strong>. Valoración con el Steam Market (EUR).</p></div>
+      </div>
+      <form class="row" id="steamForm">
+        <input type="text" id="steamid" placeholder="SteamID64 (p. ej. 7656119…)" />
+        <button type="submit">Conectar inventario</button>
+      </form>
+      <div id="steamResult"></div>
+    </section>
+
+    <!-- MAGIC -->
+    <section class="panel glass tabpane" id="pane-magic">
+      <div class="panel-head">
+        <div class="icon-chip">🃏</div>
+        <div><h2>Magic · mazos de Moxfield</h2>
+          <p class="sub2">Precio en tiempo real con Scryfall. Pega la URL del mazo o la decklist.</p></div>
+      </div>
+      <form id="magicForm">
+        <div class="row">
+          <input type="text" id="moxfield" placeholder="URL o ID de mazo de Moxfield (opcional)" />
+          <button type="submit">Valorar</button>
+        </div>
+        <textarea id="decklist" rows="6"
+          placeholder="…o pega aquí la decklist:&#10;1 Sol Ring&#10;1 Lightning Bolt&#10;1 Counterspell"></textarea>
+      </form>
+      <div id="magicResult"></div>
+    </section>
+
+    <footer class="reveal">
+      <span>Mi patrimonio</span> · datos locales · valoración en vivo con Steam Market y Scryfall
+    </footer>
+  </main>
+
+  <script src="{{ url_for('static', filename='vendor/gsap.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/ScrollTrigger.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/lenis.min.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='anim.js') }}"></script>
 </body>
 </html>
