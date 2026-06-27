@@ -11,6 +11,7 @@ const CONTRIB = {};         // label -> valor en EUR (activos)
 window.CONTRIB = CONTRIB;   // accesible para la vista de gráficos
 let BANK_NET = null;        // gasto neto del mes (informativo, no patrimonio)
 const FLOWS = { gastos: null, ganancias: null };   // flujos del mes (banco)
+const EVOL = { prev: null };   // total del mes anterior (para la variación)
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);   // YYYY-MM
 
@@ -31,8 +32,13 @@ function renderSummary() {
   const total = entries.reduce((s, [, v]) => s + v, 0);
   const el = $("#summary");
   if (!entries.length && FLOWS.gastos === null && FLOWS.ganancias === null) { el.innerHTML = ""; return; }
+  let deltaHtml = "";
+  if (EVOL.prev !== null && EVOL.prev !== undefined) {
+    const d = total - EVOL.prev, pct = EVOL.prev ? (d / EVOL.prev) * 100 : 0, up = d >= 0;
+    deltaHtml = `<div class="delta ${up ? "pos" : "neg"}">${up ? "▲" : "▼"} ${up ? "+" : ""}${money(d)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%) vs mes anterior</div>`;
+  }
   let html = `<div class="kpi big"><div class="label">Patrimonio total</div>
-              <div class="val pos">${money(total)}</div></div>`;
+              <div class="val pos">${money(total)}</div>${deltaHtml}</div>`;
   for (const [label, v] of entries.sort((a, b) => b[1] - a[1])) {
     html += `<div class="kpi"><div class="label">${label}</div><div class="val">${money(v)}</div></div>`;
   }
@@ -144,6 +150,27 @@ $("#steamForm").addEventListener("submit", async (ev) => {
     renderPositions(json, target);
   } catch (e) { setStatus(target, e.message, true); }
   finally { btn.disabled = false; }
+});
+
+// ---- Wealth Reader (banca automática) ----------------------------------
+const wrBtn = $("#wrBtn");
+if (wrBtn) wrBtn.addEventListener("click", async () => {
+  const target = $("#wrResult");
+  const code = $("#wrCode").value.trim(), token = $("#wrToken").value.trim();
+  if (!code || !token) { setStatus(target, "Pon el banco y el token del widget.", true); return; }
+  wrBtn.disabled = true;
+  setStatus(target, "Conectando con tu banco vía Wealth Reader…");
+  try {
+    const res = await fetch("/api/wealthreader", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, token }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Error");
+    setStatus(target, "");
+    renderBank(json, target);
+  } catch (e) { setStatus(target, e.message, true); }
+  finally { wrBtn.disabled = false; }
 });
 
 // ---- Magic: gestor de cartas claro -------------------------------------
@@ -331,6 +358,11 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
 fetch("/api/snapshots").then((r) => r.json()).then((snaps) => {
   const months = Object.keys(snaps || {}).sort();
   if (!months.length) return;
+  // Variación mensual: total (sin flujos) del mes anterior.
+  if (months.length > 1) {
+    const pm = snaps[months[months.length - 2]];
+    EVOL.prev = Object.entries(pm).reduce((s, [k, v]) => s + (k.startsWith("_flow:") ? 0 : v), 0);
+  }
   const last = snaps[months[months.length - 1]];      // mes más reciente
   for (const [k, v] of Object.entries(last)) {
     if (k === "_flow:gastos") FLOWS.gastos = v;

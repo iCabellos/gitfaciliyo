@@ -24,7 +24,7 @@ import tempfile
 
 from flask import Flask, jsonify, render_template, request
 
-from sources import bank, trade_republic, steam, moxfield, db, ingest
+from sources import bank, trade_republic, steam, moxfield, db, ingest, wealthreader
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
@@ -80,7 +80,7 @@ def index():
     return render_template("index.html")
 
 
-APP_VERSION = "2026-06-baseline-r11"   # se sube en cada cambio para verificar el deploy
+APP_VERSION = "2026-06-r12-features"   # se sube en cada cambio para verificar el deploy
 
 
 @app.route("/health")
@@ -129,6 +129,55 @@ def api_snapshots_reset():
     return jsonify({"ok": True})
 
 
+def _patrimonio_summary():
+    """Total del último mes, total del mes anterior, variación y flujos."""
+    snaps = db.get_snapshots()
+    months = sorted(snaps.keys())
+    if not months:
+        return None
+    def total(m):
+        return round(sum(v for k, v in snaps[m].items() if not k.startswith("_flow:")), 2)
+    last = months[-1]
+    cur = total(last)
+    prev = total(months[-2]) if len(months) > 1 else None
+    delta = round(cur - prev, 2) if prev is not None else None
+    pct = round((cur - prev) / prev * 100, 1) if prev else None
+    flows = snaps[last]
+    return {"month": last, "total": cur, "prev": prev, "delta": delta, "pct": pct,
+            "gastos": flows.get("_flow:gastos"), "ganancias": flows.get("_flow:ganancias"),
+            "categories": {k: v for k, v in snaps[last].items() if not k.startswith("_flow:")}}
+
+
+@app.route("/api/summary")
+def api_summary():
+    """Resumen de patrimonio + variación mensual (para la web y el resumen WhatsApp)."""
+    return jsonify(_patrimonio_summary() or {})
+
+
+@app.route("/api/monthly-summary", methods=["GET", "POST"])
+def api_monthly_summary():
+    """Envía por WhatsApp el patrimonio del mes y su variación (cron mensual)."""
+    expected = os.environ.get("SUMMARY_TOKEN", "").strip()
+    if expected and request.args.get("token", "") != expected:
+        return jsonify({"error": "No autorizado."}), 403
+    s = _patrimonio_summary()
+    if not s:
+        return jsonify({"error": "Sin datos."}), 404
+    eur = lambda n: f"{n:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+    lines = [f"💼 *Tu patrimonio* ({s['month']})", "", f"Total: *{eur(s['total'])}*"]
+    if s["pct"] is not None:
+        arrow = "📈" if s["delta"] >= 0 else "📉"
+        lines.append(f"{arrow} {'+' if s['delta'] >= 0 else ''}{eur(s['delta'])} ({s['pct']:+.1f}%) vs mes anterior")
+    for k, v in sorted(s["categories"].items(), key=lambda x: -x[1]):
+        lines.append(f"• {k}: {eur(v)}")
+    if s.get("ganancias") is not None:
+        lines.append(f"\n🟢 Ingresos: {eur(s['ganancias'])}   🔴 Gastos: {eur(s.get('gastos') or 0)}")
+    lines.append("\nMi patrimonio · resumen mensual")
+    from jobs.weekly_whatsapp import send_whatsapp
+    sent = send_whatsapp("\n".join(lines))
+    return jsonify({"sent": bool(sent), "summary": s})
+
+
 @app.route("/api/config")
 def api_config():
     cfg = load_config()
@@ -164,6 +213,22 @@ def _bank_and_persist(path):
 @app.route("/api/bank", methods=["POST"])
 def api_bank():
     return _file_route("file", (".pdf",), _bank_and_persist)
+
+
+@app.route("/api/wealthreader", methods=["POST"])
+def api_wealthreader():
+    """Banca automática: trae movimientos del banco vía Wealth Reader y los clasifica."""
+    body = request.get_json(silent=True) or {}
+    code = (body.get("code") or "").strip()
+    token = (body.get("token") or "").strip()
+    if not code or not token:
+        return jsonify({"error": "Faltan 'code' (banco) y 'token' (del widget de Wealth Reader)."}), 400
+    try:
+        data = wealthreader.analyze(code, token, body.get("date_from"), body.get("date_to"))
+        ingest.persist_bank_aggregates(data.get("aggregates") or {})
+        return jsonify(data)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 502
 
 
 @app.route("/api/trade-republic", methods=["POST"])
