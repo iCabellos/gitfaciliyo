@@ -5,9 +5,9 @@
   "use strict";
   if (typeof Chart === "undefined") return;
 
-  const PALETTE = ["#7c5cff", "#34e0c4", "#45c0ff", "#ff6b9d", "#ffce6b", "#43d39e", "#b388ff", "#ff9f6b"];
-  const GRID = "rgba(255,255,255,.08)";
-  const TICK = "#9aa6c9";
+  const PALETTE = ["#ffffff", "#c7c7cc", "#8e8e93", "#d1d1d6", "#636366", "#aeaeb2", "#48484a", "#e6e6ea"];
+  const GRID = "rgba(255,255,255,.10)";
+  const TICK = "#8e8e93";
   const eur = (n) => "€" + Number(n).toLocaleString("es-ES", { maximumFractionDigits: 0 });
 
   Chart.defaults.color = TICK;
@@ -35,7 +35,7 @@
     }
     pie = new Chart(document.getElementById("pieChart"), {
       type: "doughnut",
-      data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "rgba(7,10,22,.7)", borderWidth: 3, hoverOffset: 8 }] },
+      data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "rgba(0,0,0,.55)", borderWidth: 3, hoverOffset: 8 }] },
       options: {
         cutout: "62%", responsive: true, maintainAspectRatio: false,
         plugins: {
@@ -57,6 +57,10 @@
   async function refresh() {
     let snaps = {};
     try { snaps = await (await fetch("/api/snapshots")).json(); } catch (e) { snaps = {}; }
+    // Excluir flujos (_flow:gastos/ganancias/inversión): no son patrimonio.
+    for (const m in snaps) {
+      for (const k of Object.keys(snaps[m])) if (k.startsWith("_flow:")) delete snaps[m][k];
+    }
     const months = Object.keys(snaps).sort();
     const monthlyEmpty = document.getElementById("monthlyEmpty");
     if (!months.length) { if (monthlyEmpty) monthlyEmpty.style.display = "block"; return; }

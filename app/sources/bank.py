@@ -122,9 +122,39 @@ def analyze(path):
             t["suggested_link"] = best["id"]
 
     months = sorted(_day(r["date"]).strftime("%Y-%m") for r in raw) if raw else []
+    month = months[-1] if months else None
+    balance = _available_balance(path)
     return {"period": _period(raw), "transactions": txs,
-            "available_balance": _available_balance(path),
-            "month": months[-1] if months else None}
+            "available_balance": balance, "month": month,
+            "aggregates": _aggregate(txs, balance, month)}
+
+
+def _aggregate(txs, balance, month):
+    """Calcula gasto neto, ingresos (ganancias) e inversión con los enlaces
+    bizum sugeridos por defecto (lo mismo que muestra la web al cargar)."""
+    refunds = {}
+    for t in txs:
+        if t["kind"] == "bizum_in" and t["suggested_link"] is not None:
+            refunds[t["suggested_link"]] = refunds.get(t["suggested_link"], 0) + t["amount"]
+    gross = refund = inv = income = 0.0
+    for t in txs:
+        if t["kind"] in ("expense", "bizum_out"):
+            g = abs(t["amount"])
+            gross += g
+            refund += min(refunds.get(t["id"], 0), g)
+        elif t["kind"] == "investment":
+            inv += abs(t["amount"])
+        elif t["kind"] == "income":
+            income += t["amount"]
+        elif t["kind"] == "bizum_in" and t["suggested_link"] is None:
+            income += t["amount"]
+    return {
+        "month": month,
+        "liquidez": round(balance, 2) if balance is not None else None,
+        "gastos": round(gross - refund, 2),
+        "ganancias": round(income, 2),
+        "inversion": round(inv, 2),
+    }
 
 
 def _period(raw):

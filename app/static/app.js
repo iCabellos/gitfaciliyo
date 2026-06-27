@@ -10,6 +10,7 @@ const money = (n, cur = "EUR") =>
 const CONTRIB = {};         // label -> valor en EUR (activos)
 window.CONTRIB = CONTRIB;   // accesible para la vista de gráficos
 let BANK_NET = null;        // gasto neto del mes (informativo, no patrimonio)
+const FLOWS = { gastos: null, ganancias: null };   // flujos del mes (banco)
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);   // YYYY-MM
 
@@ -29,15 +30,19 @@ function renderSummary() {
   const entries = Object.entries(CONTRIB);
   const total = entries.reduce((s, [, v]) => s + v, 0);
   const el = $("#summary");
-  if (!entries.length && BANK_NET === null) { el.innerHTML = ""; return; }
+  if (!entries.length && FLOWS.gastos === null && FLOWS.ganancias === null) { el.innerHTML = ""; return; }
   let html = `<div class="kpi big"><div class="label">Patrimonio total</div>
               <div class="val pos">${money(total)}</div></div>`;
   for (const [label, v] of entries.sort((a, b) => b[1] - a[1])) {
     html += `<div class="kpi"><div class="label">${label}</div><div class="val">${money(v)}</div></div>`;
   }
-  if (BANK_NET !== null) {
-    html += `<div class="kpi"><div class="label">Gasto neto del mes</div>
-             <div class="val neg">${money(-BANK_NET)}</div></div>`;
+  if (FLOWS.ganancias !== null) {
+    html += `<div class="kpi"><div class="label">Ganancias del mes</div>
+             <div class="val pos">${money(FLOWS.ganancias)}</div></div>`;
+  }
+  if (FLOWS.gastos !== null) {
+    html += `<div class="kpi"><div class="label">Gastos del mes</div>
+             <div class="val neg">${money(-FLOWS.gastos)}</div></div>`;
   }
   el.innerHTML = html;
   $("#summaryHint").style.display = "none";
@@ -205,7 +210,18 @@ function bankCompute() {
 
 function bankRender() {
   const c = bankCompute();
-  BANK_NET = c.net; renderSummary();
+  BANK_NET = c.net;
+  FLOWS.gastos = c.net; FLOWS.ganancias = c.income;
+  renderSummary();
+  // Persistir los flujos del mes en la DB (gastos, ganancias, inversión).
+  if (BANK && BANK.month) {
+    const m = BANK.month;
+    const post = (cat, value) => fetch("/api/snapshot", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ month: m, category: cat, value }),
+    });
+    post("_flow:gastos", c.net); post("_flow:ganancias", c.income); post("_flow:inversion", c.inv);
+  }
   $("#bankKpis").innerHTML = [
     ["Gasto neto", money(-c.net), "neg"], ["Gasto bruto", money(-c.gross), "muted"],
     ["Devoluciones bizum", money(c.refund), "pos"], ["Ingresos reales", money(c.income), "pos"],
@@ -251,7 +267,12 @@ fetch("/api/snapshots").then((r) => r.json()).then((snaps) => {
   const months = Object.keys(snaps || {}).sort();
   if (!months.length) return;
   const last = snaps[months[months.length - 1]];      // mes más reciente
-  Object.assign(CONTRIB, last);
+  for (const [k, v] of Object.entries(last)) {
+    if (k === "_flow:gastos") FLOWS.gastos = v;
+    else if (k === "_flow:ganancias") FLOWS.ganancias = v;
+    else if (k.startsWith("_flow:")) { /* inversión u otros: no se muestran como patrimonio */ }
+    else CONTRIB[k] = v;                              // categoría de patrimonio
+  }
   renderSummary();
   if (window.Charts) window.Charts.refreshPie(CONTRIB);
   const hint = document.getElementById("summaryHint");

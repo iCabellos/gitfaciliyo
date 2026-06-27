@@ -24,7 +24,7 @@ import tempfile
 
 from flask import Flask, jsonify, render_template, request
 
-from sources import bank, trade_republic, nexo, steam, moxfield, db
+from sources import bank, trade_republic, nexo, steam, moxfield, db, ingest
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
@@ -145,9 +145,15 @@ def _file_route(field, suffixes, handler):
         os.unlink(path)
 
 
+def _bank_and_persist(path):
+    data = bank.analyze(path)
+    ingest.persist_bank_aggregates(data.get("aggregates") or {})
+    return data
+
+
 @app.route("/api/bank", methods=["POST"])
 def api_bank():
-    return _file_route("file", (".pdf",), bank.analyze)
+    return _file_route("file", (".pdf",), _bank_and_persist)
 
 
 @app.route("/api/trade-republic", methods=["POST"])
@@ -220,8 +226,6 @@ def api_magic():
 # ---------------------------------------------------------------------------
 import base64                       # noqa: E402
 import urllib.request               # noqa: E402
-
-from sources import ingest          # noqa: E402
 
 
 def _process_document(path):
