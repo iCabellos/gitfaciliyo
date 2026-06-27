@@ -62,8 +62,6 @@
       <button data-tab="graficos" class="active"><span>📊</span> Gráficos</button>
       <button data-tab="banco"><span>🏦</span> Banco / Gastos</button>
       <button data-tab="tr"><span>📈</span> Trade Republic</button>
-      <button data-tab="nexo"><span>🪙</span> Nexo</button>
-      <button data-tab="cripto"><span>₿</span> Cripto</button>
       <button data-tab="csgo"><span>🔫</span> CS:GO Skins</button>
       <button data-tab="magic"><span>🃏</span> Cartas Magic</button>
     </nav>
@@ -96,7 +94,7 @@
       <div class="panel-head">
         <div class="icon-chip">🏦</div>
         <div><h2>Banco · desglose de gastos netos</h2>
-          <p class="sub2">Las inversiones (Nexo) no son gasto y los bizums-devolución reducen el gasto.</p></div>
+          <p class="sub2">Gasto neto: los bizums que sean devolución reducen el gasto; el dinero movido a inversión no cuenta como gasto.</p></div>
       </div>
       <form class="row" data-upload="/api/bank" data-field="file" data-target="bankResult">
         <label class="filebox"><input type="file" accept="application/pdf" hidden>
@@ -119,38 +117,6 @@
         <button type="submit">Cargar</button>
       </form>
       <div id="trResult"></div>
-    </section>
-
-    <!-- NEXO -->
-    <section class="panel glass tabpane" id="pane-nexo">
-      <div class="panel-head">
-        <div class="icon-chip">🪙</div>
-        <div><h2>Nexo · cripto</h2>
-          <p class="sub2">Informe o balances. CSV normalizado: <code>asset,amount,value</code>.</p></div>
-      </div>
-      <form class="row" data-upload="/api/nexo" data-field="file" data-target="nexoResult">
-        <label class="filebox"><input type="file" accept=".csv,.pdf" hidden>
-          <span>Arrastra o elige el CSV o PDF de Nexo</span></label>
-        <button type="submit">Cargar</button>
-      </form>
-      <div id="nexoResult"></div>
-    </section>
-
-    <!-- CRIPTO -->
-    <section class="panel glass tabpane" id="pane-cripto">
-      <div class="panel-head">
-        <div class="icon-chip">₿</div>
-        <div><h2>Cripto · valoración en vivo (CoinGecko)</h2>
-          <p class="sub2">Escribe tus tenencias (una por línea): <code>cantidad MONEDA</code>. Precio en tiempo real.</p></div>
-      </div>
-      <form id="cryptoForm">
-        <textarea id="cryptoHoldings" rows="5"
-          placeholder="0.5 BTC&#10;2 ETH&#10;150 ADA&#10;500 NEXO"></textarea>
-        <div class="row" style="margin-top:10px">
-          <button type="submit">Valorar cripto</button>
-        </div>
-      </form>
-      <div id="cryptoResult"></div>
     </section>
 
     <!-- CS:GO -->

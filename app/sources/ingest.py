@@ -6,25 +6,22 @@ la subida web y el script de seed.
 
 import datetime
 
-from . import bank, trade_republic, nexo, db
+from . import bank, trade_republic, db
 from .common import extract_rows
 
 
 def detect_kind(path):
-    """Decide si un documento es del banco, Trade Republic o Nexo."""
-    name = path.lower()
-    if name.endswith(".csv"):
-        with open(path, encoding="utf-8-sig", errors="replace") as fh:
-            head = fh.read(2000).lower()
-        if any(w in head for w in ("asset", "currency", "coin", "crypto")):
-            return "nexo"
+    """Decide si un documento es del banco o de Trade Republic."""
+    if path.lower().endswith(".csv"):
         return "tr"
     text = " ".join(c for row in extract_rows(path) for c in row)
     low = text.lower()
-    if "trade republic" in low or "patrimonio neto" in low or "cuenta de valores" in low:
+    # Señales fuertes del banco primero ('trade republic' puede salir como
+    # concepto de una transferencia en el extracto bancario).
+    if "saldo disponible" in low or "bizum" in low:
+        return "bank"
+    if "patrimonio neto" in low or "cuenta de valores" in low:
         return "tr"
-    if "nexo" in low and "bizum" not in low:
-        return "nexo"
     return "bank"
 
 
@@ -39,12 +36,6 @@ def process(path):
         return {"kind": "tr", "month": month, "category": r["category"], "value": r["total"],
                 "summary": f"📈 Trade Republic: {r['total']:.2f} € guardado para {month} "
                            f"({len(r['positions'])} posiciones)."}
-    if kind == "nexo":
-        r = nexo.parse(path)
-        month = r.get("month") or this_month
-        db.set_snapshot(month, r["category"], r["total"])
-        return {"kind": "nexo", "month": month, "category": r["category"], "value": r["total"],
-                "summary": f"🪙 Nexo: {r['total']:.2f} € guardado para {month}."}
     r = bank.analyze(path)
     month = r.get("month") or this_month
     agg = r.get("aggregates") or {}
