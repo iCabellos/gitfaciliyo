@@ -5,7 +5,8 @@
   "use strict";
   if (typeof Chart === "undefined") return;
 
-  const PALETTE = ["#ffffff", "#c7c7cc", "#8e8e93", "#d1d1d6", "#636366", "#aeaeb2", "#48484a", "#e6e6ea"];
+  // Blanco y negro con toques de color en los detalles.
+  const PALETTE = ["#f5f5f7", "#6ea8ff", "#46d39a", "#c7c7cc", "#ff6b9d", "#8e8e93", "#ffce6b", "#b388ff"];
   const GRID = "rgba(255,255,255,.10)";
   const TICK = "#8e8e93";
   const eur = (n) => "€" + Number(n).toLocaleString("es-ES", { maximumFractionDigits: 0 });

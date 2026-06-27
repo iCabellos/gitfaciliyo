@@ -53,6 +53,11 @@ valuation_cache = Table(
     Column("day", String(10)),
     Column("payload", Text),
 )
+settings = Table(
+    "settings", _meta,
+    Column("skey", String(120), primary_key=True),
+    Column("svalue", Text),
+)
 
 _ready = False
 
@@ -126,3 +131,25 @@ def cache_put(key, payload):
         if res.rowcount == 0:
             conn.execute(insert(valuation_cache).values(
                 cache_key=key, day=today, payload=blob))
+
+
+# ---- ajustes (holdings cripto, lista de cartas…) -------------------------
+def get_setting(key, default=None):
+    _ensure()
+    with _engine.connect() as conn:
+        row = conn.execute(select(settings.c.svalue).where(settings.c.skey == key)).first()
+    if not row:
+        return default
+    try:
+        return json.loads(row.svalue)
+    except (ValueError, TypeError):
+        return default
+
+
+def set_setting(key, value):
+    _ensure()
+    blob = json.dumps(value, ensure_ascii=False)
+    with _engine.begin() as conn:
+        res = conn.execute(update(settings).where(settings.c.skey == key).values(svalue=blob))
+        if res.rowcount == 0:
+            conn.execute(insert(settings).values(skey=key, svalue=blob))
