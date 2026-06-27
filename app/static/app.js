@@ -146,30 +146,6 @@ $("#steamForm").addEventListener("submit", async (ev) => {
   finally { btn.disabled = false; }
 });
 
-// ---- Cripto (CoinGecko en vivo) ----------------------------------------
-$("#cryptoForm").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const target = $("#cryptoResult");
-  const btn = $("button", ev.target); btn.disabled = true;
-  setStatus(target, "Pidiendo precios en vivo a CoinGecko…");
-  try {
-    const res = await fetch("/api/crypto", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ holdings: $("#cryptoHoldings").value, refresh: true }),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "Error");
-    setStatus(target, "");
-    renderPositions(json, target);
-  } catch (e) { setStatus(target, e.message, true); }
-  finally { btn.disabled = false; }
-});
-// Cargar holdings guardados al iniciar.
-fetch("/api/crypto").then((r) => r.json()).then((j) => {
-  if (j.holdings_text) $("#cryptoHoldings").value = j.holdings_text;
-  if (j.positions && j.positions.length) renderPositions(j, $("#cryptoResult"));
-}).catch(() => {});
-
 // ---- Magic: gestor de cartas claro -------------------------------------
 let CARDS = [];   // {qty, name, set, cn, foil}
 

@@ -24,7 +24,7 @@ import tempfile
 
 from flask import Flask, jsonify, render_template, request
 
-from sources import bank, trade_republic, nexo, steam, moxfield, db, ingest, crypto
+from sources import bank, trade_republic, steam, moxfield, db, ingest
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
@@ -161,11 +161,6 @@ def api_trade_republic():
     return _file_route("file", (".pdf", ".csv"), trade_republic.parse)
 
 
-@app.route("/api/nexo", methods=["POST"])
-def api_nexo():
-    return _file_route("file", (".csv", ".pdf"), nexo.parse)
-
-
 def _cached_daily(key, compute):
     """Devuelve la valoración cacheada del día; si no hay, la calcula y la guarda.
 
@@ -232,34 +227,6 @@ def api_cards():
                                        "decklist": body.get("decklist") or ""})
         return jsonify({"ok": True})
     return jsonify(db.get_setting("magic_cards", {"reference": "", "decklist": ""}))
-
-
-@app.route("/api/crypto", methods=["GET", "POST"])
-def api_crypto():
-    """Valora tus cripto en vivo (CoinGecko). GET usa lo guardado; POST guarda."""
-    if request.method == "POST":
-        body = request.get_json(silent=True) or {}
-        holdings_text = body.get("holdings", "")
-        db.set_setting("crypto_holdings", holdings_text)
-        nocache = bool(body.get("refresh"))
-    else:
-        holdings_text = db.get_setting("crypto_holdings", "") or ""
-        nocache = False
-    holdings = crypto.parse_holdings(holdings_text)
-    if not holdings:
-        return jsonify({"source": "Cripto", "category": "Cripto", "positions": [],
-                        "total": 0.0, "currency": "EUR", "warnings": [], "holdings_text": holdings_text})
-    key = "crypto:" + hashlib.sha1(holdings_text.encode()).hexdigest()
-    try:
-        if nocache:
-            data = crypto.analyze(holdings)
-            db.cache_put(key, data)
-        else:
-            data = _cached_daily(key, lambda: crypto.analyze(holdings))
-        data["holdings_text"] = holdings_text
-        return jsonify(data)
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": str(exc)}), 502
 
 
 # ---------------------------------------------------------------------------
