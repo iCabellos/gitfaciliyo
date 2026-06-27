@@ -80,9 +80,19 @@ def index():
     return render_template("index.html")
 
 
+APP_VERSION = "2026-06-baseline-r10"   # se sube en cada cambio para verificar el deploy
+
+
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/version")
+def api_version():
+    """Para verificar qué build está realmente desplegado."""
+    return jsonify({"version": APP_VERSION, "db": db.backend(),
+                    "sources": ["banco", "trade_republic", "csgo", "magic"]})
 
 
 @app.route("/favicon.ico")
