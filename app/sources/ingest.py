@@ -47,8 +47,22 @@ def process(path):
                 "summary": f"🪙 Nexo: {r['total']:.2f} € guardado para {month}."}
     r = bank.analyze(path)
     month = r.get("month") or this_month
+    agg = r.get("aggregates") or {}
+    agg["month"] = month
+    persist_bank_aggregates(agg)
     value = r.get("available_balance") or 0.0
-    db.set_snapshot(month, "Liquidez (banco)", value)
     return {"kind": "bank", "month": month, "category": "Liquidez (banco)", "value": value,
-            "summary": f"🏦 Banco: saldo {value:.2f} € guardado para {month} "
-                       f"({len(r['transactions'])} movimientos)."}
+            "summary": f"🏦 Banco {month}: saldo {value:.2f} €, gastos {agg.get('gastos', 0):.2f} €, "
+                       f"ganancias {agg.get('ganancias', 0):.2f} € ({len(r['transactions'])} mov.)."}
+
+
+def persist_bank_aggregates(agg):
+    """Guarda en la DB la liquidez (patrimonio) y los flujos mensuales del banco:
+    gastos, ganancias e inversión (con prefijo '_flow:' para no sumarlos al patrimonio)."""
+    month = agg.get("month")
+    if not month:
+        return
+    if agg.get("liquidez") is not None:
+        db.set_snapshot(month, "Liquidez (banco)", agg["liquidez"])
+    for k in ("gastos", "ganancias", "inversion"):
+        db.set_snapshot(month, "_flow:" + k, agg.get(k, 0) or 0)
