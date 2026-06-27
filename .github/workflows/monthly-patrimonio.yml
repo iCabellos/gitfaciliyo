@@ -13,7 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Disparar resumen mensual
+        env:
+          APP_URL: ${{ vars.APP_URL || 'https://mi-patrimonio.onrender.com' }}
         run: |
           curl -fsS -X POST \
-            "${{ secrets.APP_URL }}/api/monthly-summary?token=${{ secrets.SUMMARY_TOKEN }}" \
+            "$APP_URL/api/monthly-summary?token=${{ secrets.SUMMARY_TOKEN }}" \
             && echo "Resumen mensual solicitado."
