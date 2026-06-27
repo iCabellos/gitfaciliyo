@@ -146,16 +146,98 @@ $("#steamForm").addEventListener("submit", async (ev) => {
   finally { btn.disabled = false; }
 });
 
-// ---- Magic (Moxfield + Scryfall) ---------------------------------------
-$("#magicForm").addEventListener("submit", async (ev) => {
+// ---- Cripto (CoinGecko en vivo) ----------------------------------------
+$("#cryptoForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const target = $("#magicResult");
+  const target = $("#cryptoResult");
   const btn = $("button", ev.target); btn.disabled = true;
-  setStatus(target, "Obteniendo cartas y pidiendo precios en vivo a Scryfall…");
+  setStatus(target, "Pidiendo precios en vivo a CoinGecko…");
+  try {
+    const res = await fetch("/api/crypto", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ holdings: $("#cryptoHoldings").value, refresh: true }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Error");
+    setStatus(target, "");
+    renderPositions(json, target);
+  } catch (e) { setStatus(target, e.message, true); }
+  finally { btn.disabled = false; }
+});
+// Cargar holdings guardados al iniciar.
+fetch("/api/crypto").then((r) => r.json()).then((j) => {
+  if (j.holdings_text) $("#cryptoHoldings").value = j.holdings_text;
+  if (j.positions && j.positions.length) renderPositions(j, $("#cryptoResult"));
+}).catch(() => {});
+
+// ---- Magic: gestor de cartas claro -------------------------------------
+let CARDS = [];   // {qty, name, set, cn, foil}
+
+function cardToLine(c) {
+  let s = `${c.qty} ${c.name}`;
+  if (c.set) s += ` (${c.set})${c.cn ? " " + c.cn : ""}`;
+  if (c.foil) s += " *F*";
+  return s;
+}
+function cardsToDecklist() { return CARDS.map(cardToLine).join("\n"); }
+
+function parseDecklistJS(text) {
+  const out = [];
+  for (let raw of (text || "").split("\n")) {
+    let line = raw.trim();
+    if (!line || /^(\/\/|#|Deck|Commander|Sideboard|About|Maybeboard)/.test(line)) continue;
+    if (line.startsWith("SB:")) line = line.slice(3).trim();
+    const m = line.match(/^(?:(\d+)\s*x?\s+)?(.+?)(?:\s+\(([A-Za-z0-9]{2,6})\)\s+(\S+))?((?:\s+[*#][^*#\s]+[*#]?)*)\s*$/);
+    if (!m) continue;
+    const flags = (m[5] || "").toLowerCase();
+    out.push({ qty: m[1] ? parseInt(m[1]) : 1, name: m[2].trim(), set: m[3] || "", cn: m[4] || "",
+               foil: flags.includes("*f*") || flags.includes("*e*") });
+  }
+  return out;
+}
+
+function renderCards() {
+  const el = $("#cardList");
+  if (!CARDS.length) { el.innerHTML = `<p class="hint">Aún no hay cartas. Añade una arriba o importa una decklist.</p>`; return; }
+  el.innerHTML = CARDS.map((c, i) => `<div class="card-row">
+    <span class="card-q">${c.qty}×</span>
+    <span class="card-n">${c.name}${c.set ? ` <span class="tag">${c.set.toUpperCase()}${c.cn ? " " + c.cn : ""}</span>` : ""}${c.foil ? ` <span class="tag tag-foil">foil</span>` : ""}</span>
+    <button type="button" class="card-del" data-i="${i}" aria-label="Quitar">×</button>
+  </div>`).join("");
+  $$(".card-del", el).forEach((b) => b.addEventListener("click", () => { CARDS.splice(+b.dataset.i, 1); renderCards(); saveCards(); }));
+}
+
+function saveCards() {
+  fetch("/api/cards", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reference: $("#moxfield").value.trim(), decklist: cardsToDecklist() }) }).catch(() => {});
+}
+
+$("#cardAddForm").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const name = $("#cardName").value.trim();
+  if (!name) return;
+  CARDS.push({ qty: Math.max(1, parseInt($("#cardQty").value) || 1), name,
+               set: $("#cardSet").value.trim(), cn: $("#cardCn").value.trim(), foil: $("#cardFoil").checked });
+  $("#cardName").value = ""; $("#cardSet").value = ""; $("#cardCn").value = ""; $("#cardFoil").checked = false; $("#cardQty").value = 1;
+  $("#cardName").focus();
+  renderCards(); saveCards();
+});
+
+$("#importBtn").addEventListener("click", () => {
+  const parsed = parseDecklistJS($("#decklist").value);
+  if (parsed.length) { CARDS = CARDS.concat(parsed); $("#decklist").value = ""; renderCards(); saveCards(); }
+});
+
+$("#valuarBtn").addEventListener("click", async () => {
+  const target = $("#magicResult");
+  const ref = $("#moxfield").value.trim();
+  if (!CARDS.length && !ref) { setStatus(target, "Añade cartas o pon un mazo de Moxfield.", true); return; }
+  const btn = $("#valuarBtn"); btn.disabled = true;
+  setStatus(target, "Pidiendo precios en vivo a Scryfall…");
   try {
     const res = await fetch("/api/magic", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ moxfield: $("#moxfield").value.trim(), decklist: $("#decklist").value }),
+      body: JSON.stringify({ moxfield: ref, decklist: cardsToDecklist() }),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "Error");
@@ -164,6 +246,13 @@ $("#magicForm").addEventListener("submit", async (ev) => {
   } catch (e) { setStatus(target, e.message, true); }
   finally { btn.disabled = false; }
 });
+
+// Cargar lista de cartas guardada.
+fetch("/api/cards").then((r) => r.json()).then((j) => {
+  if (j.reference) $("#moxfield").value = j.reference;
+  if (j.decklist) { CARDS = parseDecklistJS(j.decklist); }
+  renderCards();
+}).catch(() => renderCards());
 
 // ===== BANCO: desglose de gastos netos + enlace de bizums ===============
 let BANK = null, LINKS = {};

@@ -24,7 +24,7 @@ import tempfile
 
 from flask import Flask, jsonify, render_template, request
 
-from sources import bank, trade_republic, nexo, steam, moxfield, db, ingest
+from sources import bank, trade_republic, nexo, steam, moxfield, db, ingest, crypto
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
@@ -209,6 +209,8 @@ def api_magic():
     if not reference and not decklist.strip():
         return jsonify({"error": "Indica una URL/ID de Moxfield o pega una decklist."}), 400
     nocache = bool(body.get("refresh"))
+    # Guarda la lista de cartas para reutilizarla (carga al volver, watchlist).
+    db.set_setting("magic_cards", {"reference": reference, "decklist": decklist})
     try:
         key = "magic:" + hashlib.sha1((reference + "|" + decklist).encode()).hexdigest()
         if nocache:
@@ -216,6 +218,45 @@ def api_magic():
             db.cache_put(key, data)
         else:
             data = _cached_daily(key, lambda: moxfield.analyze(reference=reference, decklist=decklist))
+        return jsonify(data)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 502
+
+
+@app.route("/api/cards", methods=["GET", "POST"])
+def api_cards():
+    """Lista de cartas guardada (para precargar/guardar el gestor de cartas)."""
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        db.set_setting("magic_cards", {"reference": (body.get("reference") or "").strip(),
+                                       "decklist": body.get("decklist") or ""})
+        return jsonify({"ok": True})
+    return jsonify(db.get_setting("magic_cards", {"reference": "", "decklist": ""}))
+
+
+@app.route("/api/crypto", methods=["GET", "POST"])
+def api_crypto():
+    """Valora tus cripto en vivo (CoinGecko). GET usa lo guardado; POST guarda."""
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        holdings_text = body.get("holdings", "")
+        db.set_setting("crypto_holdings", holdings_text)
+        nocache = bool(body.get("refresh"))
+    else:
+        holdings_text = db.get_setting("crypto_holdings", "") or ""
+        nocache = False
+    holdings = crypto.parse_holdings(holdings_text)
+    if not holdings:
+        return jsonify({"source": "Cripto", "category": "Cripto", "positions": [],
+                        "total": 0.0, "currency": "EUR", "warnings": [], "holdings_text": holdings_text})
+    key = "crypto:" + hashlib.sha1(holdings_text.encode()).hexdigest()
+    try:
+        if nocache:
+            data = crypto.analyze(holdings)
+            db.cache_put(key, data)
+        else:
+            data = _cached_daily(key, lambda: crypto.analyze(holdings))
+        data["holdings_text"] = holdings_text
         return jsonify(data)
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 502
