@@ -80,7 +80,7 @@ def index():
     return render_template("index.html")
 
 
-APP_VERSION = "2026-06-baseline-r10"   # se sube en cada cambio para verificar el deploy
+APP_VERSION = "2026-06-baseline-r11"   # se sube en cada cambio para verificar el deploy
 
 
 @app.route("/health")

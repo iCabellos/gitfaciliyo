@@ -26,8 +26,11 @@ def _engine_url():
             url = url.replace("postgres://", "postgresql+psycopg2://", 1)
         elif url.startswith("postgresql://"):
             url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
-        # Supabase/Neon exigen SSL; lo activamos si no se indicó.
-        if "sslmode=" not in url:
+        # Solo forzar SSL en hosts EXTERNOS (con dominio, p. ej. Supabase/Neon o
+        # la conexión externa de Render). Las conexiones INTERNAS de Render
+        # (host sin punto) van por red privada y no usan SSL.
+        host = url.split("@")[-1].split("/")[0].split(":")[0] if "@" in url else ""
+        if "." in host and "sslmode=" not in url:
             url += ("&" if "?" in url else "?") + "sslmode=require"
         return url, False
     os.makedirs(_DATA_DIR, exist_ok=True)
