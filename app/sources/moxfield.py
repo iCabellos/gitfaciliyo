@@ -169,6 +169,15 @@ def price_cards(cards):
             p = card.get("prices", {})
             pr = {k: (float(p[k]) if p.get(k) else None)
                   for k in ("eur", "usd", "eur_foil", "usd_foil")}
+            # Metadatos para una vista rica (miniatura, rareza, tipo). Las cartas de
+            # doble cara llevan las imágenes dentro de 'card_faces'.
+            faces = card.get("card_faces") or []
+            imgs = card.get("image_uris") or (faces[0].get("image_uris") if faces else {}) or {}
+            pr["image"] = imgs.get("small") or imgs.get("normal")
+            pr["image_large"] = imgs.get("normal") or imgs.get("large") or imgs.get("small")
+            pr["rarity"] = card.get("rarity")
+            pr["type"] = card.get("type_line")
+            pr["set_name"] = card.get("set_name")
             if card.get("id"):
                 found[("id", card["id"])] = pr
             if card.get("set") and card.get("collector_number"):
@@ -227,7 +236,10 @@ def analyze(reference=None, decklist=None):
         positions.append(Position(
             source=SOURCE, category=CATEGORY, name=c["name"], quantity=c["quantity"],
             unit_value=unit, value=round(unit * c["quantity"], 2), currency=cur,
-            extra={"deck": deck_name, "edition": edition, "foil": foil, "tag": tag},
+            extra={"deck": deck_name, "edition": edition, "foil": foil, "tag": tag,
+                   "image": pr.get("image"), "image_large": pr.get("image_large"),
+                   "rarity": pr.get("rarity"), "type": pr.get("type"),
+                   "set_name": pr.get("set_name"), "usd_note": usd_note.strip()},
         ).finalize())
     if usd_converted:
         warnings.append(f"{usd_converted} carta(s) sin precio EUR: convertidas de USD a € al cambio del día.")

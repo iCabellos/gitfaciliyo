@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mi patrimonio · panel</title>
-  <meta name="description" content="Panel personal que consolida banco, Trade Republic, Nexo, skins de CS:GO y cartas Magic, con gráficos y valoración en vivo.">
+  <meta name="description" content="Panel personal que consolida banco, Trade Republic, skins de CS:GO y cartas Magic, con gráficos y valoración en vivo.">
   <meta name="theme-color" content="#060607">
   <meta property="og:title" content="Mi patrimonio">
-  <meta property="og:description" content="Todo tu patrimonio en una vista: banco, acciones, cripto, skins y cartas Magic.">
+  <meta property="og:description" content="Todo tu patrimonio en una vista: banco, acciones, skins y cartas Magic.">
   <meta property="og:type" content="website">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -173,10 +173,16 @@
         <div class="row" style="margin-top:10px"><button type="button" id="importBtn">Importar a mi lista</button></div>
       </details>
 
-      <h3>Mi lista de cartas</h3>
+      <div class="list-head">
+        <h3>Mi lista de cartas <span class="count-pill" id="cardCount" hidden></span></h3>
+        <div class="list-tools" id="cardTools" hidden>
+          <div class="m-search"><span>🔎</span><input type="search" id="cardSearch" placeholder="Filtrar mi lista…" autocomplete="off"></div>
+          <button type="button" class="m-chip danger" id="cardClear">Vaciar</button>
+        </div>
+      </div>
       <div id="cardList" class="card-list"></div>
-      <div class="row" style="margin-top:12px">
-        <button type="button" id="valuarBtn">Valorar mi lista</button>
+      <div class="row" style="margin-top:14px">
+        <button type="button" id="valuarBtn">💰 Valorar mi lista</button>
       </div>
       <div id="magicResult"></div>
     </section>

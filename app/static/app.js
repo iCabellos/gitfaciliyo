@@ -2,6 +2,10 @@
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+// Escapa texto antes de inyectarlo en innerHTML (evita XSS desde nombres de
+// cartas, items de Steam, conceptos del banco, etc.). Sirve para texto y atributos.
+const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const money = (n, cur = "EUR") =>
   (n < 0 ? "-" : "") + (cur === "USD" ? "$" : "€") +
   Math.abs(n).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -40,7 +44,7 @@ function renderSummary() {
   let html = `<div class="kpi big"><div class="label">Patrimonio total</div>
               <div class="val pos">${money(total)}</div>${deltaHtml}</div>`;
   for (const [label, v] of entries.sort((a, b) => b[1] - a[1])) {
-    html += `<div class="kpi"><div class="label">${label}</div><div class="val">${money(v)}</div></div>`;
+    html += `<div class="kpi"><div class="label">${esc(label)}</div><div class="val">${money(v)}</div></div>`;
   }
   if (FLOWS.ganancias !== null) {
     html += `<div class="kpi"><div class="label">Ganancias del mes</div>
@@ -83,7 +87,7 @@ function setStatus(target, msg, err) { const s = statusEl(target); s.textContent
 
 function warningsHtml(warnings) {
   if (!warnings || !warnings.length) return "";
-  return warnings.map((w) => `<p class="warn">⚠️ ${w}</p>`).join("");
+  return warnings.map((w) => `<p class="warn">⚠️ ${esc(w)}</p>`).join("");
 }
 
 // ---- subida genérica (Trade Republic, Nexo, Banco) ---------------------
@@ -113,10 +117,10 @@ $$("form[data-upload]").forEach((form) => {
 function renderPositions(data, target) {
   const cur = data.currency || "EUR";
   const rows = data.positions.map((p) => {
-    const icon = p.extra && p.extra.icon ? `<img class="thumb" src="${p.extra.icon}">` : "";
+    const icon = p.extra && p.extra.icon ? `<img class="thumb" src="${esc(p.extra.icon)}">` : "";
     const sub = p.extra && (p.extra.tag || p.extra.isin || p.extra.asset || p.extra.deck || p.extra.type) || "";
     return `<tr>
-      <td>${icon}${p.name}${sub ? ` <span class="tag">${sub}</span>` : ""}</td>
+      <td>${icon}${esc(p.name)}${sub ? ` <span class="tag">${esc(sub)}</span>` : ""}</td>
       <td class="num muted">${p.quantity.toLocaleString("es-ES")}</td>
       <td class="num muted">${p.unit_value ? money(p.unit_value, p.currency) : "—"}</td>
       <td class="num">${money(p.value, p.currency)}</td>
@@ -128,7 +132,7 @@ function renderPositions(data, target) {
       <thead><tr><th>Activo</th><th class="num">Cantidad</th>
         <th class="num">Precio ud.</th><th class="num">Valor</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="4" class="muted">Sin posiciones.</td></tr>`}</tbody>
-      <tfoot><tr><td colspan="3">Total ${data.source}</td>
+      <tfoot><tr><td colspan="3">Total ${esc(data.source)}</td>
         <td class="num pos">${money(data.total, cur)}</td></tr></tfoot>
     </table>`;
   if (window.AppFX) AppFX.onRender(target);
@@ -199,16 +203,43 @@ function parseDecklistJS(text) {
   return out;
 }
 
+let CARD_Q = "";
+
 function renderCards() {
   const el = $("#cardList");
-  if (!CARDS.length) { el.innerHTML = `<p class="hint">Aún no hay cartas. Añade una arriba o importa una decklist.</p>`; return; }
-  el.innerHTML = CARDS.map((c, i) => `<div class="card-row">
+  const tools = $("#cardTools"), pill = $("#cardCount");
+  const totalQty = CARDS.reduce((s, c) => s + (c.qty || 1), 0);
+  if (tools) tools.hidden = CARDS.length <= 8;
+  if (pill) { pill.hidden = !CARDS.length; pill.textContent = `${CARDS.length} líneas · ${totalQty} cartas`; }
+  if (!CARDS.length) {
+    el.innerHTML = `<p class="hint">Aún no hay cartas. Añade una arriba o importa una decklist.</p>`;
+    return;
+  }
+  const q = CARD_Q.toLowerCase();
+  // Conserva el índice real en CARDS para poder borrar tras filtrar.
+  const rows = CARDS.map((c, i) => [c, i]).filter(([c]) =>
+    !q || (c.name + " " + (c.set || "")).toLowerCase().includes(q));
+  if (!rows.length) { el.innerHTML = `<p class="hint">Sin coincidencias para «${esc(CARD_Q)}».</p>`; return; }
+  el.innerHTML = rows.map(([c, i]) => `<div class="card-row">
     <span class="card-q">${c.qty}×</span>
-    <span class="card-n">${c.name}${c.set ? ` <span class="tag">${c.set.toUpperCase()}${c.cn ? " " + c.cn : ""}</span>` : ""}${c.foil ? ` <span class="tag tag-foil">foil</span>` : ""}</span>
+    <span class="card-n">${esc(c.name)}${c.set ? ` <span class="tag">${esc(c.set.toUpperCase())}${c.cn ? " " + esc(c.cn) : ""}</span>` : ""}${c.foil ? ` <span class="tag tag-foil">foil</span>` : ""}</span>
     <button type="button" class="card-del" data-i="${i}" aria-label="Quitar">×</button>
   </div>`).join("");
-  $$(".card-del", el).forEach((b) => b.addEventListener("click", () => { CARDS.splice(+b.dataset.i, 1); renderCards(); saveCards(); }));
 }
+
+// Borrado por delegación (un único listener, robusto con miles de filas).
+$("#cardList").addEventListener("click", (ev) => {
+  const b = ev.target.closest(".card-del");
+  if (!b) return;
+  CARDS.splice(+b.dataset.i, 1);
+  renderCards(); saveCards();
+});
+const cardSearch = $("#cardSearch");
+if (cardSearch) cardSearch.addEventListener("input", (e) => { CARD_Q = e.target.value; renderCards(); });
+const cardClear = $("#cardClear");
+if (cardClear) cardClear.addEventListener("click", () => {
+  if (CARDS.length && confirm("¿Vaciar toda la lista de cartas?")) { CARDS = []; CARD_Q = ""; if (cardSearch) cardSearch.value = ""; renderCards(); saveCards(); }
+});
 
 function saveCards() {
   fetch("/api/cards", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -244,11 +275,197 @@ $("#valuarBtn").addEventListener("click", async () => {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "Error");
-    setStatus(target, json.deck ? "Mazo: " + json.deck : "");
-    renderPositions(json, target);
+    setStatus(target, json.deck && json.deck !== "Decklist" ? "Mazo: " + json.deck : "");
+    renderMagic(json, target);
   } catch (e) { setStatus(target, e.message, true); }
   finally { btn.disabled = false; }
 });
+
+// ---- Magic: vista de la colección (tarjetas compactas + filtros + orden) --
+// Lista potencialmente enorme: sin paginación, pero con búsqueda/filtros/orden
+// instantáneos y renderizado progresivo (bloques al hacer scroll), para que el
+// DOM no crezca de golpe. Tarjetas sin imagen para aprovechar el espacio.
+const MAGIC = { all: [], view: [], shown: 0, chunk: 80, q: "", sort: "value", foil: false,
+               rar: new Set(), set: "", layout: "grid", io: null, currency: "EUR" };
+
+const RAR_ORDER = { mythic: 4, rare: 3, uncommon: 2, common: 1 };
+const RAR_DEFS = [["mythic", "Mítica"], ["rare", "Rara"], ["uncommon", "Infrecuente"], ["common", "Común"]];
+const setLabel = (x) => x.set_name || ((x.edition || "").split(" ")[0]) || "";
+
+function magicStats(list) {
+  const units = list.reduce((s, p) => s + (p.quantity || 0), 0);
+  const total = list.reduce((s, p) => s + (p.value || 0), 0);
+  const foils = list.filter((p) => p.extra && p.extra.foil).reduce((s, p) => s + (p.quantity || 0), 0);
+  const top = list.reduce((m, p) => (p.unit_value || 0) > (m.unit_value || 0) ? p : m, list[0] || {});
+  return [
+    ["Cartas", units.toLocaleString("es-ES")],
+    ["Valor total", money(total)],
+    ["Más cara", top && top.unit_value ? money(top.unit_value) : "—", top && top.name ? esc(top.name) : ""],
+    ["Foils", foils.toLocaleString("es-ES")],
+  ];
+}
+
+function magicApplyFilters() {
+  const q = MAGIC.q.toLowerCase();
+  let list = MAGIC.all.filter((p) => {
+    const x = p.extra || {};
+    if (MAGIC.foil && !x.foil) return false;
+    if (MAGIC.rar.size && !MAGIC.rar.has((x.rarity || "").toLowerCase())) return false;
+    if (MAGIC.set && setLabel(x) !== MAGIC.set) return false;
+    if (!q) return true;
+    const hay = [p.name, x.edition, x.set_name, x.type].filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(q);
+  });
+  const rk = (p) => RAR_ORDER[((p.extra || {}).rarity || "").toLowerCase()] || 0;
+  const by = {
+    value: (a, b) => (b.value || 0) - (a.value || 0),
+    value_asc: (a, b) => (a.value || 0) - (b.value || 0),
+    unit: (a, b) => (b.unit_value || 0) - (a.unit_value || 0),
+    unit_asc: (a, b) => (a.unit_value || 0) - (b.unit_value || 0),
+    qty: (a, b) => (b.quantity || 0) - (a.quantity || 0),
+    name: (a, b) => (a.name || "").localeCompare(b.name || "", "es"),
+    name_desc: (a, b) => (b.name || "").localeCompare(a.name || "", "es"),
+    rarity: (a, b) => rk(b) - rk(a) || (b.value || 0) - (a.value || 0),
+    set: (a, b) => setLabel(a.extra || {}).localeCompare(setLabel(b.extra || {}), "es"),
+  }[MAGIC.sort] || (() => 0);
+  list.sort(by);
+  MAGIC.view = list;
+  MAGIC.shown = 0;
+}
+
+function magicTile(p) {
+  const x = p.extra || {};
+  const r = (x.rarity || "").toLowerCase();
+  const rarity = r ? `<span class="m-rar r-${esc(r)}" title="${esc(x.rarity)}">${esc(x.rarity[0].toUpperCase())}</span>` : "";
+  const ed = setLabel(x) || (x.edition || "");
+  const qty = (p.quantity || 1);
+  return `<article class="mcard${x.foil ? " is-foil" : ""}">
+    <div class="m-head">
+      <span class="m-qty">×${qty}</span>
+      ${rarity}
+      ${x.foil ? `<span class="m-foil">✦ foil</span>` : ""}
+    </div>
+    <div class="m-name" title="${esc(p.name)}">${esc(p.name)}</div>
+    <div class="m-ed" title="${esc(x.edition || ed)}">${esc(ed)}</div>
+    <div class="m-prices">
+      <span class="m-unit">${p.unit_value ? money(p.unit_value) + " ud." : "—"}${x.usd_note ? ` <span class="m-usd">${esc(x.usd_note)}</span>` : ""}</span>
+      <span class="m-val">${money(p.value)}</span>
+    </div>
+  </article>`;
+}
+
+function magicRenderChunk(grid) {
+  const next = MAGIC.view.slice(MAGIC.shown, MAGIC.shown + MAGIC.chunk);
+  if (!next.length) return;
+  grid.insertAdjacentHTML("beforeend", next.map(magicTile).join(""));
+  MAGIC.shown += next.length;
+  const left = MAGIC.view.length - MAGIC.shown;
+  const count = grid.parentElement.querySelector(".m-count");
+  if (count) count.textContent = `Mostrando ${MAGIC.shown} de ${MAGIC.view.length} cartas` + (left ? " · sigue bajando" : "");
+}
+
+function magicRefresh(target) {
+  magicApplyFilters();
+  const grid = $("#magicGrid", target);
+  if (!grid) return;
+  grid.className = "m-grid" + (MAGIC.layout === "list" ? " is-list" : "");
+  grid.innerHTML = "";
+  const stats = $("#magicStats", target);
+  if (stats) stats.innerHTML = magicStats(MAGIC.view).map(([l, v, sub]) =>
+    `<div class="m-stat"><span class="m-stat-l">${l}</span><span class="m-stat-v">${v}</span>${sub ? `<span class="m-stat-s">${sub}</span>` : ""}</div>`).join("");
+  magicRenderChunk(grid);
+  if (window.AppFX) AppFX.onRender(grid);
+}
+
+function renderMagic(data, target) {
+  MAGIC.all = data.positions || [];
+  MAGIC.currency = data.currency || "EUR";
+  MAGIC.shown = 0;
+  MAGIC.q = ""; MAGIC.set = ""; MAGIC.foil = false; MAGIC.sort = "value"; MAGIC.rar = new Set();
+  if (MAGIC.io) { MAGIC.io.disconnect(); MAGIC.io = null; }
+  if (!MAGIC.all.length) {
+    target.innerHTML = `${warningsHtml(data.warnings)}<p class="hint">No se encontraron cartas para valorar.</p>`;
+    return;
+  }
+  // Opciones de set y rarezas presentes en la colección.
+  const setCounts = {}, rarCounts = {};
+  for (const p of MAGIC.all) {
+    const x = p.extra || {};
+    const sl = setLabel(x); if (sl) setCounts[sl] = (setCounts[sl] || 0) + 1;
+    const rr = (x.rarity || "").toLowerCase(); if (rr) rarCounts[rr] = (rarCounts[rr] || 0) + 1;
+  }
+  const setOpts = Object.keys(setCounts).sort((a, b) => a.localeCompare(b, "es"));
+  const setSelect = `<option value="">Todos los sets (${setOpts.length})</option>` +
+    setOpts.map((s) => `<option value="${esc(s)}">${esc(s)} · ${setCounts[s]}</option>`).join("");
+  const rarChips = RAR_DEFS.filter(([k]) => rarCounts[k]).map(([k, lbl]) =>
+    `<button type="button" class="m-rchip r-${k}" data-rar="${k}">${lbl} <b>${rarCounts[k]}</b></button>`).join("");
+
+  target.innerHTML = `
+    <div class="m-statbar" id="magicStats"></div>
+    <div class="m-toolbar">
+      <div class="m-search"><span>🔎</span><input type="search" id="magicQ" placeholder="Buscar carta, set o tipo…" autocomplete="off"></div>
+      <select id="magicSort" aria-label="Ordenar">
+        <optgroup label="Valor total"><option value="value">Mayor ↓</option><option value="value_asc">Menor ↑</option></optgroup>
+        <optgroup label="Precio unidad"><option value="unit">Mayor ↓</option><option value="unit_asc">Menor ↑</option></optgroup>
+        <option value="qty">Cantidad ↓</option>
+        <option value="rarity">Rareza ↓</option>
+        <option value="set">Set A-Z</option>
+        <option value="name">Nombre A-Z</option>
+        <option value="name_desc">Nombre Z-A</option>
+      </select>
+      <select id="magicSet" aria-label="Set">${setSelect}</select>
+      <button type="button" class="m-chip" id="magicFoil" aria-pressed="false">✦ Solo foil</button>
+      <div class="m-views">
+        <button type="button" id="magicGridV" class="active" aria-label="Cuadrícula">▦</button>
+        <button type="button" id="magicListV" aria-label="Lista">≣</button>
+      </div>
+    </div>
+    ${rarChips ? `<div class="m-rars" id="magicRars">${rarChips}<button type="button" class="m-rclear" id="magicRarClear" hidden>Limpiar</button></div>` : ""}
+    <div id="magicGrid" class="m-grid"></div>
+    <p class="m-count hint"></p>
+    ${warningsHtml(data.warnings)}`;
+
+  $("#magicQ", target).addEventListener("input", (e) => { MAGIC.q = e.target.value; magicRefresh(target); });
+  $("#magicSort", target).addEventListener("change", (e) => { MAGIC.sort = e.target.value; magicRefresh(target); });
+  $("#magicSet", target).addEventListener("change", (e) => { MAGIC.set = e.target.value; magicRefresh(target); });
+  $("#magicFoil", target).addEventListener("click", (e) => {
+    MAGIC.foil = !MAGIC.foil; e.target.setAttribute("aria-pressed", MAGIC.foil); e.target.classList.toggle("active", MAGIC.foil);
+    magicRefresh(target);
+  });
+  $$(".m-rchip", target).forEach((b) => b.addEventListener("click", () => {
+    const k = b.dataset.rar;
+    if (MAGIC.rar.has(k)) MAGIC.rar.delete(k); else MAGIC.rar.add(k);
+    b.classList.toggle("active", MAGIC.rar.has(k));
+    const clr = $("#magicRarClear", target); if (clr) clr.hidden = !MAGIC.rar.size;
+    magicRefresh(target);
+  }));
+  const rarClear = $("#magicRarClear", target);
+  if (rarClear) rarClear.addEventListener("click", () => {
+    MAGIC.rar.clear();
+    $$(".m-rchip", target).forEach((b) => b.classList.remove("active"));
+    rarClear.hidden = true; magicRefresh(target);
+  });
+  const setView = (v) => {
+    MAGIC.layout = v;
+    $("#magicGridV", target).classList.toggle("active", v === "grid");
+    $("#magicListV", target).classList.toggle("active", v === "list");
+    magicRefresh(target);
+  };
+  $("#magicGridV", target).addEventListener("click", () => setView("grid"));
+  $("#magicListV", target).addEventListener("click", () => setView("list"));
+
+  magicRefresh(target);
+  // Renderizado progresivo: cuando el centinela entra en viewport, añade el siguiente bloque.
+  const sentinel = document.createElement("div");
+  sentinel.className = "m-sentinel";
+  $("#magicGrid", target).after(sentinel);
+  MAGIC.io = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) magicRenderChunk($("#magicGrid", target));
+  }, { rootMargin: "600px" });
+  MAGIC.io.observe(sentinel);
+
+  setContrib(data.category, data.total, data.month);   // suma al patrimonio consolidado
+}
 
 // Cargar lista de cartas guardada.
 fetch("/api/cards").then((r) => r.json()).then((j) => {
@@ -323,7 +540,7 @@ function bankRender() {
   const rows = Object.entries(c.cats).sort((a, b) => (b[1].gross - b[1].refund) - (a[1].gross - a[1].refund));
   $("#catTable tbody").innerHTML = rows.map(([cat, v]) => {
     const net = v.gross - v.refund, pct = c.net ? (net / c.net) * 100 : 0;
-    return `<tr><td>${cat}</td><td class="num muted">${money(-v.gross)}</td>
+    return `<tr><td>${esc(cat)}</td><td class="num muted">${money(-v.gross)}</td>
       <td class="num ${v.refund ? "pos" : "muted"}">${v.refund ? money(v.refund) : "—"}</td>
       <td class="num neg">${money(-net)}</td>
       <td class="num">${pct.toFixed(1)}%<div class="bar"><span style="width:${Math.max(0, pct)}%"></span></div></td></tr>`;
@@ -336,11 +553,11 @@ function bankRender() {
     const none = (sel === null || sel === undefined) ? " selected" : "";
     return `<option value=""${none}>— Ingreso real (no devolución) —</option>` +
       BANK.transactions.filter(isExp).map((e) =>
-        `<option value="${e.id}"${e.id === sel ? " selected" : ""}>${e.date} · ${e.concept} (${money(e.amount)})</option>`).join("");
+        `<option value="${e.id}"${e.id === sel ? " selected" : ""}>${esc(e.date)} · ${esc(e.concept)} (${money(e.amount)})</option>`).join("");
   };
   $("#bizumTable tbody").innerHTML = bizums.length ? bizums.map((b) => {
     const flag = b.recurring_income ? ` <span class="tag">posible ingreso recurrente</span>` : "";
-    return `<tr><td>${b.date}${flag}</td><td class="num pos">${money(b.amount)}</td>
+    return `<tr><td>${esc(b.date)}${flag}</td><td class="num pos">${money(b.amount)}</td>
       <td><select data-bizum="${b.id}">${opts(LINKS[b.id])}</select></td></tr>`;
   }).join("") : `<tr><td colspan="3" class="muted">No hay bizums recibidos.</td></tr>`;
   $$("#bizumTable select").forEach((s) => s.addEventListener("change", () => {
