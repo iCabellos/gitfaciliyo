@@ -173,10 +173,16 @@
         <div class="row" style="margin-top:10px"><button type="button" id="importBtn">Importar a mi lista</button></div>
       </details>
 
-      <h3>Mi lista de cartas</h3>
+      <div class="list-head">
+        <h3>Mi lista de cartas <span class="count-pill" id="cardCount" hidden></span></h3>
+        <div class="list-tools" id="cardTools" hidden>
+          <div class="m-search"><span>🔎</span><input type="search" id="cardSearch" placeholder="Filtrar mi lista…" autocomplete="off"></div>
+          <button type="button" class="m-chip danger" id="cardClear">Vaciar</button>
+        </div>
+      </div>
       <div id="cardList" class="card-list"></div>
-      <div class="row" style="margin-top:12px">
-        <button type="button" id="valuarBtn">Valorar mi lista</button>
+      <div class="row" style="margin-top:14px">
+        <button type="button" id="valuarBtn">💰 Valorar mi lista</button>
       </div>
       <div id="magicResult"></div>
     </section>

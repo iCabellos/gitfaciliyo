@@ -203,16 +203,43 @@ function parseDecklistJS(text) {
   return out;
 }
 
+let CARD_Q = "";
+
 function renderCards() {
   const el = $("#cardList");
-  if (!CARDS.length) { el.innerHTML = `<p class="hint">Aún no hay cartas. Añade una arriba o importa una decklist.</p>`; return; }
-  el.innerHTML = CARDS.map((c, i) => `<div class="card-row">
+  const tools = $("#cardTools"), pill = $("#cardCount");
+  const totalQty = CARDS.reduce((s, c) => s + (c.qty || 1), 0);
+  if (tools) tools.hidden = CARDS.length <= 8;
+  if (pill) { pill.hidden = !CARDS.length; pill.textContent = `${CARDS.length} líneas · ${totalQty} cartas`; }
+  if (!CARDS.length) {
+    el.innerHTML = `<p class="hint">Aún no hay cartas. Añade una arriba o importa una decklist.</p>`;
+    return;
+  }
+  const q = CARD_Q.toLowerCase();
+  // Conserva el índice real en CARDS para poder borrar tras filtrar.
+  const rows = CARDS.map((c, i) => [c, i]).filter(([c]) =>
+    !q || (c.name + " " + (c.set || "")).toLowerCase().includes(q));
+  if (!rows.length) { el.innerHTML = `<p class="hint">Sin coincidencias para «${esc(CARD_Q)}».</p>`; return; }
+  el.innerHTML = rows.map(([c, i]) => `<div class="card-row">
     <span class="card-q">${c.qty}×</span>
     <span class="card-n">${esc(c.name)}${c.set ? ` <span class="tag">${esc(c.set.toUpperCase())}${c.cn ? " " + esc(c.cn) : ""}</span>` : ""}${c.foil ? ` <span class="tag tag-foil">foil</span>` : ""}</span>
     <button type="button" class="card-del" data-i="${i}" aria-label="Quitar">×</button>
   </div>`).join("");
-  $$(".card-del", el).forEach((b) => b.addEventListener("click", () => { CARDS.splice(+b.dataset.i, 1); renderCards(); saveCards(); }));
 }
+
+// Borrado por delegación (un único listener, robusto con miles de filas).
+$("#cardList").addEventListener("click", (ev) => {
+  const b = ev.target.closest(".card-del");
+  if (!b) return;
+  CARDS.splice(+b.dataset.i, 1);
+  renderCards(); saveCards();
+});
+const cardSearch = $("#cardSearch");
+if (cardSearch) cardSearch.addEventListener("input", (e) => { CARD_Q = e.target.value; renderCards(); });
+const cardClear = $("#cardClear");
+if (cardClear) cardClear.addEventListener("click", () => {
+  if (CARDS.length && confirm("¿Vaciar toda la lista de cartas?")) { CARDS = []; CARD_Q = ""; if (cardSearch) cardSearch.value = ""; renderCards(); saveCards(); }
+});
 
 function saveCards() {
   fetch("/api/cards", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -248,11 +275,154 @@ $("#valuarBtn").addEventListener("click", async () => {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "Error");
-    setStatus(target, json.deck ? "Mazo: " + json.deck : "");
-    renderPositions(json, target);
+    setStatus(target, json.deck && json.deck !== "Decklist" ? "Mazo: " + json.deck : "");
+    renderMagic(json, target);
   } catch (e) { setStatus(target, e.message, true); }
   finally { btn.disabled = false; }
 });
+
+// ---- Magic: vista rica de la colección (galería + buscador + orden) ------
+// Lista potencialmente enorme: sin paginación, pero con búsqueda/orden
+// instantáneos y renderizado progresivo (chunks al hacer scroll) + imágenes
+// perezosas, para que el DOM no crezca de golpe.
+const MAGIC = { all: [], view: [], shown: 0, chunk: 60, q: "", sort: "value", foil: false,
+               layout: "grid", io: null, currency: "EUR" };
+
+function magicStats(list) {
+  const units = list.reduce((s, p) => s + (p.quantity || 0), 0);
+  const total = list.reduce((s, p) => s + (p.value || 0), 0);
+  const foils = list.filter((p) => p.extra && p.extra.foil).reduce((s, p) => s + (p.quantity || 0), 0);
+  const top = list.reduce((m, p) => (p.unit_value || 0) > (m.unit_value || 0) ? p : m, list[0] || {});
+  return [
+    ["Cartas", units.toLocaleString("es-ES")],
+    ["Valor total", money(total)],
+    ["Más cara", top && top.unit_value ? money(top.unit_value) : "—", top && top.name ? esc(top.name) : ""],
+    ["Foils", foils.toLocaleString("es-ES")],
+  ];
+}
+
+function magicApplyFilters() {
+  const q = MAGIC.q.toLowerCase();
+  let list = MAGIC.all.filter((p) => {
+    if (MAGIC.foil && !(p.extra && p.extra.foil)) return false;
+    if (!q) return true;
+    const hay = [p.name, p.extra && p.extra.edition, p.extra && p.extra.set_name, p.extra && p.extra.type]
+      .filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(q);
+  });
+  const by = {
+    value: (a, b) => (b.value || 0) - (a.value || 0),
+    unit: (a, b) => (b.unit_value || 0) - (a.unit_value || 0),
+    qty: (a, b) => (b.quantity || 0) - (a.quantity || 0),
+    name: (a, b) => (a.name || "").localeCompare(b.name || "", "es"),
+  }[MAGIC.sort] || (() => 0);
+  list.sort(by);
+  MAGIC.view = list;
+  MAGIC.shown = 0;
+}
+
+function magicTile(p) {
+  const x = p.extra || {};
+  const img = x.image || x.image_large || "";
+  const rarity = x.rarity ? `<span class="m-rar r-${esc(x.rarity)}">${esc(x.rarity[0].toUpperCase())}</span>` : "";
+  const ed = [x.edition, x.set_name].filter(Boolean)[0] || "";
+  const qty = (p.quantity || 1);
+  return `<article class="mcard${x.foil ? " is-foil" : ""}">
+    <div class="m-thumb">
+      ${img ? `<img loading="lazy" src="${esc(img)}" alt="${esc(p.name)}">` : `<div class="m-noimg">🃏</div>`}
+      ${qty > 1 ? `<span class="m-qty">×${qty}</span>` : ""}
+      ${x.foil ? `<span class="m-foil">foil</span>` : ""}
+    </div>
+    <div class="m-info">
+      <div class="m-name" title="${esc(p.name)}">${esc(p.name)}</div>
+      <div class="m-sub">${rarity}<span class="m-ed">${esc(ed)}</span></div>
+      <div class="m-prices">
+        <span class="m-unit">${p.unit_value ? money(p.unit_value) : "—"}${x.usd_note ? ` <span class="m-usd">${esc(x.usd_note)}</span>` : ""}</span>
+        <span class="m-val">${money(p.value)}</span>
+      </div>
+    </div>
+  </article>`;
+}
+
+function magicRenderChunk(grid) {
+  const next = MAGIC.view.slice(MAGIC.shown, MAGIC.shown + MAGIC.chunk);
+  if (!next.length) return;
+  grid.insertAdjacentHTML("beforeend", next.map(magicTile).join(""));
+  MAGIC.shown += next.length;
+  const left = MAGIC.view.length - MAGIC.shown;
+  const count = grid.parentElement.querySelector(".m-count");
+  if (count) count.textContent = `Mostrando ${MAGIC.shown} de ${MAGIC.view.length} cartas` + (left ? " · sigue bajando" : "");
+}
+
+function magicRefresh(target) {
+  magicApplyFilters();
+  const grid = $("#magicGrid", target);
+  if (!grid) return;
+  grid.className = "m-grid" + (MAGIC.layout === "list" ? " is-list" : "");
+  grid.innerHTML = "";
+  const stats = $("#magicStats", target);
+  if (stats) stats.innerHTML = magicStats(MAGIC.view).map(([l, v, sub]) =>
+    `<div class="m-stat"><span class="m-stat-l">${l}</span><span class="m-stat-v">${v}</span>${sub ? `<span class="m-stat-s">${sub}</span>` : ""}</div>`).join("");
+  magicRenderChunk(grid);
+  if (window.AppFX) AppFX.onRender(grid);
+}
+
+function renderMagic(data, target) {
+  MAGIC.all = data.positions || [];
+  MAGIC.currency = data.currency || "EUR";
+  MAGIC.shown = 0;
+  if (MAGIC.io) { MAGIC.io.disconnect(); MAGIC.io = null; }
+  if (!MAGIC.all.length) {
+    target.innerHTML = `${warningsHtml(data.warnings)}<p class="hint">No se encontraron cartas para valorar.</p>`;
+    return;
+  }
+  target.innerHTML = `
+    <div class="m-statbar" id="magicStats"></div>
+    <div class="m-toolbar">
+      <div class="m-search"><span>🔎</span><input type="search" id="magicQ" placeholder="Buscar carta, set o tipo…" autocomplete="off"></div>
+      <select id="magicSort" aria-label="Ordenar">
+        <option value="value">Valor total ↓</option>
+        <option value="unit">Precio ud. ↓</option>
+        <option value="qty">Cantidad ↓</option>
+        <option value="name">Nombre A-Z</option>
+      </select>
+      <button type="button" class="m-chip" id="magicFoil" aria-pressed="false">✦ Solo foil</button>
+      <div class="m-views">
+        <button type="button" id="magicGridV" class="active" aria-label="Cuadrícula">▦</button>
+        <button type="button" id="magicListV" aria-label="Lista">≣</button>
+      </div>
+    </div>
+    <div id="magicGrid" class="m-grid"></div>
+    <p class="m-count hint"></p>
+    ${warningsHtml(data.warnings)}`;
+
+  $("#magicQ", target).addEventListener("input", (e) => { MAGIC.q = e.target.value; magicRefresh(target); });
+  $("#magicSort", target).addEventListener("change", (e) => { MAGIC.sort = e.target.value; magicRefresh(target); });
+  $("#magicFoil", target).addEventListener("click", (e) => {
+    MAGIC.foil = !MAGIC.foil; e.target.setAttribute("aria-pressed", MAGIC.foil); e.target.classList.toggle("active", MAGIC.foil);
+    magicRefresh(target);
+  });
+  const setView = (v) => {
+    MAGIC.layout = v;
+    $("#magicGridV", target).classList.toggle("active", v === "grid");
+    $("#magicListV", target).classList.toggle("active", v === "list");
+    magicRefresh(target);
+  };
+  $("#magicGridV", target).addEventListener("click", () => setView("grid"));
+  $("#magicListV", target).addEventListener("click", () => setView("list"));
+
+  magicRefresh(target);
+  // Renderizado progresivo: cuando el centinela entra en viewport, añade el siguiente bloque.
+  const sentinel = document.createElement("div");
+  sentinel.className = "m-sentinel";
+  $("#magicGrid", target).after(sentinel);
+  MAGIC.io = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) magicRenderChunk($("#magicGrid", target));
+  }, { rootMargin: "600px" });
+  MAGIC.io.observe(sentinel);
+
+  setContrib(data.category, data.total, data.month);   // suma al patrimonio consolidado
+}
 
 // Cargar lista de cartas guardada.
 fetch("/api/cards").then((r) => r.json()).then((j) => {
