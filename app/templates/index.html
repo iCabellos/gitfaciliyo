@@ -30,12 +30,11 @@
     <div class="hero-inner">
       <span class="badge reveal"><span class="dot"></span> Patrimonio en tiempo real</span>
       <h1 class="hero-title reveal">Mi <span class="grad">patrimonio</span></h1>
-      <p class="hero-sub reveal">Banco, Trade Republic, Nexo, skins de CS:GO y cartas Magic
+      <p class="hero-sub reveal">Banco, Trade Republic, skins de CS:GO y cartas Magic
          — todo consolidado en una sola vista, con valoración en vivo.</p>
       <div class="hero-chips reveal">
         <span class="chip">🏦 Banco</span>
         <span class="chip">📈 Trade Republic</span>
-        <span class="chip">🪙 Nexo</span>
         <span class="chip">🔫 CS:GO</span>
         <span class="chip">🃏 Magic</span>
       </div>
@@ -101,6 +100,19 @@
           <span>Arrastra o elige el PDF del extracto bancario</span></label>
         <button type="submit">Analizar</button>
       </form>
+
+      <details class="bulk" id="wrBox">
+        <summary>🔗 O conecta tu banco automáticamente (Wealth Reader)</summary>
+        <p class="hint">Trae los movimientos sin subir PDF y los clasifica igual. El widget de Wealth
+           Reader autentica con tu banco (no guardamos tus credenciales) y devuelve un <em>token</em>.
+           Requiere configurar <code>WEALTHREADER_API_KEY</code> en el servidor.</p>
+        <div class="row">
+          <input type="text" id="wrCode" placeholder="Banco (p. ej. caixabank)" />
+          <input type="text" id="wrToken" placeholder="Token del widget de Wealth Reader" />
+          <button type="button" id="wrBtn">Conectar</button>
+        </div>
+        <div id="wrResult"></div>
+      </details>
       <div id="bankResult"></div>
     </section>
 

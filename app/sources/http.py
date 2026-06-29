@@ -68,3 +68,19 @@ def get_json(url, headers=None, timeout=25):
 def post_json(url, data, headers=None, timeout=25):
     status, raw = request(url, method="POST", data=data, headers=headers, timeout=timeout)
     return status, _maybe_json(raw)
+
+
+def post_form(url, fields, headers=None, timeout=30):
+    """POST application/x-www-form-urlencoded (p. ej. la API de Wealth Reader)."""
+    import urllib.parse
+    body = urllib.parse.urlencode(fields).encode("utf-8")
+    hdrs = dict(DEFAULT_HEADERS)
+    hdrs["Content-Type"] = "application/x-www-form-urlencoded"
+    if headers:
+        hdrs.update(headers)
+    req = urllib.request.Request(url, data=body, headers=hdrs, method="POST")
+    try:
+        resp = urllib.request.urlopen(req, timeout=timeout, context=_CTX)
+        return getattr(resp, "status", 200), _maybe_json(resp.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        return e.code, _maybe_json(e.read().decode("utf-8", "replace"))

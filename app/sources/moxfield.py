@@ -14,7 +14,7 @@ Flujo:
 import re
 import time
 
-from . import http
+from . import http, fx
 from .common import Position
 
 SOURCE = "Magic"
@@ -204,26 +204,33 @@ def analyze(reference=None, decklist=None):
 
     prices, warnings = price_cards(cards)
     positions = []
-    usd_only = 0
+    usd_converted = 0
     for c in cards:
         pr = prices.get(_ident_key(c), {})
         foil = bool(c.get("foil"))
         unit, cur = _pick_price(pr, foil)
-        if cur == "USD":
-            usd_only += 1
         if unit is None:
             unit, cur = 0.0, "EUR"
             warnings.append(f"Sin precio para «{c['name']}».")
         edition = " ".join(x for x in [c.get("set", "").upper() if c.get("set") else "",
                                        str(c.get("collector") or "")] if x).strip()
-        tag = (edition + (" ✦foil" if foil else "")).strip() or deck_name
+        # Conversión de divisa: si el precio es en USD, lo pasamos a EUR para que
+        # cuente en el total (antes se excluía).
+        usd_note = ""
+        if cur == "USD":
+            eur = fx.usd_to_eur(unit)
+            if eur is not None:
+                usd_note = f" (≈ ${unit:.2f})"
+                unit, cur = eur, "EUR"
+                usd_converted += 1
+        tag = (edition + (" ✦foil" if foil else "") + usd_note).strip() or deck_name
         positions.append(Position(
             source=SOURCE, category=CATEGORY, name=c["name"], quantity=c["quantity"],
             unit_value=unit, value=round(unit * c["quantity"], 2), currency=cur,
             extra={"deck": deck_name, "edition": edition, "foil": foil, "tag": tag},
         ).finalize())
-    if usd_only:
-        warnings.append(f"{usd_only} carta(s) solo tenían precio en USD (no sumadas al total en €).")
+    if usd_converted:
+        warnings.append(f"{usd_converted} carta(s) sin precio EUR: convertidas de USD a € al cambio del día.")
     total_eur = round(sum(p.value for p in positions if p.currency == "EUR"), 2)
     return {
         "source": SOURCE, "category": CATEGORY, "deck": deck_name,

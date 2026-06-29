@@ -163,6 +163,9 @@ button:disabled { opacity: .5; cursor: progress; }
 .kpi.big { grid-column: 1 / -1; padding: 24px 26px;
   background: linear-gradient(120deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .04)); }
 .kpi.big .label { color: #d6d6db; }
+.kpi.big .delta { margin-top: 6px; font-size: 14px; font-weight: 700; }
+.kpi.big .delta.pos { color: var(--pos); }
+.kpi.big .delta.neg { color: var(--neg); }
 .kpi.big .val { font-size: clamp(34px, 6vw, 52px);
   background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 

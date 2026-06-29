@@ -84,8 +84,17 @@ def _available_balance(path):
 
 
 def analyze(path):
-    """Parsea, categoriza y sugiere enlaces bizum_recibido -> gasto."""
+    """Parsea el PDF, categoriza y agrega (reutiliza la lógica común)."""
     raw = _parse_pdf(path)
+    return analyze_raw(raw, _available_balance(path))
+
+
+def analyze_raw(raw, balance):
+    """Categoriza y agrega una lista de movimientos ya normalizados.
+
+    raw: lista de {concept, date('dd/mm/yyyy'), amount, balance}. Reutilizado por
+    el PDF del banco y por Wealth Reader (banca automática).
+    """
     txs = []
     for i, r in enumerate(raw):
         cat, kind = categorize(r["concept"], r["amount"])
@@ -123,7 +132,6 @@ def analyze(path):
 
     months = sorted(_day(r["date"]).strftime("%Y-%m") for r in raw) if raw else []
     month = months[-1] if months else None
-    balance = _available_balance(path)
     return {"period": _period(raw), "transactions": txs,
             "available_balance": balance, "month": month,
             "aggregates": _aggregate(txs, balance, month)}
