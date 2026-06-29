@@ -281,12 +281,16 @@ $("#valuarBtn").addEventListener("click", async () => {
   finally { btn.disabled = false; }
 });
 
-// ---- Magic: vista rica de la colección (galería + buscador + orden) ------
-// Lista potencialmente enorme: sin paginación, pero con búsqueda/orden
-// instantáneos y renderizado progresivo (chunks al hacer scroll) + imágenes
-// perezosas, para que el DOM no crezca de golpe.
-const MAGIC = { all: [], view: [], shown: 0, chunk: 60, q: "", sort: "value", foil: false,
-               layout: "grid", io: null, currency: "EUR" };
+// ---- Magic: vista de la colección (tarjetas compactas + filtros + orden) --
+// Lista potencialmente enorme: sin paginación, pero con búsqueda/filtros/orden
+// instantáneos y renderizado progresivo (bloques al hacer scroll), para que el
+// DOM no crezca de golpe. Tarjetas sin imagen para aprovechar el espacio.
+const MAGIC = { all: [], view: [], shown: 0, chunk: 80, q: "", sort: "value", foil: false,
+               rar: new Set(), set: "", layout: "grid", io: null, currency: "EUR" };
+
+const RAR_ORDER = { mythic: 4, rare: 3, uncommon: 2, common: 1 };
+const RAR_DEFS = [["mythic", "Mítica"], ["rare", "Rara"], ["uncommon", "Infrecuente"], ["common", "Común"]];
+const setLabel = (x) => x.set_name || ((x.edition || "").split(" ")[0]) || "";
 
 function magicStats(list) {
   const units = list.reduce((s, p) => s + (p.quantity || 0), 0);
@@ -304,17 +308,25 @@ function magicStats(list) {
 function magicApplyFilters() {
   const q = MAGIC.q.toLowerCase();
   let list = MAGIC.all.filter((p) => {
-    if (MAGIC.foil && !(p.extra && p.extra.foil)) return false;
+    const x = p.extra || {};
+    if (MAGIC.foil && !x.foil) return false;
+    if (MAGIC.rar.size && !MAGIC.rar.has((x.rarity || "").toLowerCase())) return false;
+    if (MAGIC.set && setLabel(x) !== MAGIC.set) return false;
     if (!q) return true;
-    const hay = [p.name, p.extra && p.extra.edition, p.extra && p.extra.set_name, p.extra && p.extra.type]
-      .filter(Boolean).join(" ").toLowerCase();
+    const hay = [p.name, x.edition, x.set_name, x.type].filter(Boolean).join(" ").toLowerCase();
     return hay.includes(q);
   });
+  const rk = (p) => RAR_ORDER[((p.extra || {}).rarity || "").toLowerCase()] || 0;
   const by = {
     value: (a, b) => (b.value || 0) - (a.value || 0),
+    value_asc: (a, b) => (a.value || 0) - (b.value || 0),
     unit: (a, b) => (b.unit_value || 0) - (a.unit_value || 0),
+    unit_asc: (a, b) => (a.unit_value || 0) - (b.unit_value || 0),
     qty: (a, b) => (b.quantity || 0) - (a.quantity || 0),
     name: (a, b) => (a.name || "").localeCompare(b.name || "", "es"),
+    name_desc: (a, b) => (b.name || "").localeCompare(a.name || "", "es"),
+    rarity: (a, b) => rk(b) - rk(a) || (b.value || 0) - (a.value || 0),
+    set: (a, b) => setLabel(a.extra || {}).localeCompare(setLabel(b.extra || {}), "es"),
   }[MAGIC.sort] || (() => 0);
   list.sort(by);
   MAGIC.view = list;
@@ -323,23 +335,21 @@ function magicApplyFilters() {
 
 function magicTile(p) {
   const x = p.extra || {};
-  const img = x.image || x.image_large || "";
-  const rarity = x.rarity ? `<span class="m-rar r-${esc(x.rarity)}">${esc(x.rarity[0].toUpperCase())}</span>` : "";
-  const ed = [x.edition, x.set_name].filter(Boolean)[0] || "";
+  const r = (x.rarity || "").toLowerCase();
+  const rarity = r ? `<span class="m-rar r-${esc(r)}" title="${esc(x.rarity)}">${esc(x.rarity[0].toUpperCase())}</span>` : "";
+  const ed = setLabel(x) || (x.edition || "");
   const qty = (p.quantity || 1);
   return `<article class="mcard${x.foil ? " is-foil" : ""}">
-    <div class="m-thumb">
-      ${img ? `<img loading="lazy" src="${esc(img)}" alt="${esc(p.name)}">` : `<div class="m-noimg">🃏</div>`}
-      ${qty > 1 ? `<span class="m-qty">×${qty}</span>` : ""}
-      ${x.foil ? `<span class="m-foil">foil</span>` : ""}
+    <div class="m-head">
+      <span class="m-qty">×${qty}</span>
+      ${rarity}
+      ${x.foil ? `<span class="m-foil">✦ foil</span>` : ""}
     </div>
-    <div class="m-info">
-      <div class="m-name" title="${esc(p.name)}">${esc(p.name)}</div>
-      <div class="m-sub">${rarity}<span class="m-ed">${esc(ed)}</span></div>
-      <div class="m-prices">
-        <span class="m-unit">${p.unit_value ? money(p.unit_value) : "—"}${x.usd_note ? ` <span class="m-usd">${esc(x.usd_note)}</span>` : ""}</span>
-        <span class="m-val">${money(p.value)}</span>
-      </div>
+    <div class="m-name" title="${esc(p.name)}">${esc(p.name)}</div>
+    <div class="m-ed" title="${esc(x.edition || ed)}">${esc(ed)}</div>
+    <div class="m-prices">
+      <span class="m-unit">${p.unit_value ? money(p.unit_value) + " ud." : "—"}${x.usd_note ? ` <span class="m-usd">${esc(x.usd_note)}</span>` : ""}</span>
+      <span class="m-val">${money(p.value)}</span>
     </div>
   </article>`;
 }
@@ -371,36 +381,69 @@ function renderMagic(data, target) {
   MAGIC.all = data.positions || [];
   MAGIC.currency = data.currency || "EUR";
   MAGIC.shown = 0;
+  MAGIC.q = ""; MAGIC.set = ""; MAGIC.foil = false; MAGIC.sort = "value"; MAGIC.rar = new Set();
   if (MAGIC.io) { MAGIC.io.disconnect(); MAGIC.io = null; }
   if (!MAGIC.all.length) {
     target.innerHTML = `${warningsHtml(data.warnings)}<p class="hint">No se encontraron cartas para valorar.</p>`;
     return;
   }
+  // Opciones de set y rarezas presentes en la colección.
+  const setCounts = {}, rarCounts = {};
+  for (const p of MAGIC.all) {
+    const x = p.extra || {};
+    const sl = setLabel(x); if (sl) setCounts[sl] = (setCounts[sl] || 0) + 1;
+    const rr = (x.rarity || "").toLowerCase(); if (rr) rarCounts[rr] = (rarCounts[rr] || 0) + 1;
+  }
+  const setOpts = Object.keys(setCounts).sort((a, b) => a.localeCompare(b, "es"));
+  const setSelect = `<option value="">Todos los sets (${setOpts.length})</option>` +
+    setOpts.map((s) => `<option value="${esc(s)}">${esc(s)} · ${setCounts[s]}</option>`).join("");
+  const rarChips = RAR_DEFS.filter(([k]) => rarCounts[k]).map(([k, lbl]) =>
+    `<button type="button" class="m-rchip r-${k}" data-rar="${k}">${lbl} <b>${rarCounts[k]}</b></button>`).join("");
+
   target.innerHTML = `
     <div class="m-statbar" id="magicStats"></div>
     <div class="m-toolbar">
       <div class="m-search"><span>🔎</span><input type="search" id="magicQ" placeholder="Buscar carta, set o tipo…" autocomplete="off"></div>
       <select id="magicSort" aria-label="Ordenar">
-        <option value="value">Valor total ↓</option>
-        <option value="unit">Precio ud. ↓</option>
+        <optgroup label="Valor total"><option value="value">Mayor ↓</option><option value="value_asc">Menor ↑</option></optgroup>
+        <optgroup label="Precio unidad"><option value="unit">Mayor ↓</option><option value="unit_asc">Menor ↑</option></optgroup>
         <option value="qty">Cantidad ↓</option>
+        <option value="rarity">Rareza ↓</option>
+        <option value="set">Set A-Z</option>
         <option value="name">Nombre A-Z</option>
+        <option value="name_desc">Nombre Z-A</option>
       </select>
+      <select id="magicSet" aria-label="Set">${setSelect}</select>
       <button type="button" class="m-chip" id="magicFoil" aria-pressed="false">✦ Solo foil</button>
       <div class="m-views">
         <button type="button" id="magicGridV" class="active" aria-label="Cuadrícula">▦</button>
         <button type="button" id="magicListV" aria-label="Lista">≣</button>
       </div>
     </div>
+    ${rarChips ? `<div class="m-rars" id="magicRars">${rarChips}<button type="button" class="m-rclear" id="magicRarClear" hidden>Limpiar</button></div>` : ""}
     <div id="magicGrid" class="m-grid"></div>
     <p class="m-count hint"></p>
     ${warningsHtml(data.warnings)}`;
 
   $("#magicQ", target).addEventListener("input", (e) => { MAGIC.q = e.target.value; magicRefresh(target); });
   $("#magicSort", target).addEventListener("change", (e) => { MAGIC.sort = e.target.value; magicRefresh(target); });
+  $("#magicSet", target).addEventListener("change", (e) => { MAGIC.set = e.target.value; magicRefresh(target); });
   $("#magicFoil", target).addEventListener("click", (e) => {
     MAGIC.foil = !MAGIC.foil; e.target.setAttribute("aria-pressed", MAGIC.foil); e.target.classList.toggle("active", MAGIC.foil);
     magicRefresh(target);
+  });
+  $$(".m-rchip", target).forEach((b) => b.addEventListener("click", () => {
+    const k = b.dataset.rar;
+    if (MAGIC.rar.has(k)) MAGIC.rar.delete(k); else MAGIC.rar.add(k);
+    b.classList.toggle("active", MAGIC.rar.has(k));
+    const clr = $("#magicRarClear", target); if (clr) clr.hidden = !MAGIC.rar.size;
+    magicRefresh(target);
+  }));
+  const rarClear = $("#magicRarClear", target);
+  if (rarClear) rarClear.addEventListener("click", () => {
+    MAGIC.rar.clear();
+    $$(".m-rchip", target).forEach((b) => b.classList.remove("active"));
+    rarClear.hidden = true; magicRefresh(target);
   });
   const setView = (v) => {
     MAGIC.layout = v;
