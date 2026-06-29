@@ -2,6 +2,10 @@
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+// Escapa texto antes de inyectarlo en innerHTML (evita XSS desde nombres de
+// cartas, items de Steam, conceptos del banco, etc.). Sirve para texto y atributos.
+const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const money = (n, cur = "EUR") =>
   (n < 0 ? "-" : "") + (cur === "USD" ? "$" : "€") +
   Math.abs(n).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -40,7 +44,7 @@ function renderSummary() {
   let html = `<div class="kpi big"><div class="label">Patrimonio total</div>
               <div class="val pos">${money(total)}</div>${deltaHtml}</div>`;
   for (const [label, v] of entries.sort((a, b) => b[1] - a[1])) {
-    html += `<div class="kpi"><div class="label">${label}</div><div class="val">${money(v)}</div></div>`;
+    html += `<div class="kpi"><div class="label">${esc(label)}</div><div class="val">${money(v)}</div></div>`;
   }
   if (FLOWS.ganancias !== null) {
     html += `<div class="kpi"><div class="label">Ganancias del mes</div>
@@ -83,7 +87,7 @@ function setStatus(target, msg, err) { const s = statusEl(target); s.textContent
 
 function warningsHtml(warnings) {
   if (!warnings || !warnings.length) return "";
-  return warnings.map((w) => `<p class="warn">⚠️ ${w}</p>`).join("");
+  return warnings.map((w) => `<p class="warn">⚠️ ${esc(w)}</p>`).join("");
 }
 
 // ---- subida genérica (Trade Republic, Nexo, Banco) ---------------------
@@ -113,10 +117,10 @@ $$("form[data-upload]").forEach((form) => {
 function renderPositions(data, target) {
   const cur = data.currency || "EUR";
   const rows = data.positions.map((p) => {
-    const icon = p.extra && p.extra.icon ? `<img class="thumb" src="${p.extra.icon}">` : "";
+    const icon = p.extra && p.extra.icon ? `<img class="thumb" src="${esc(p.extra.icon)}">` : "";
     const sub = p.extra && (p.extra.tag || p.extra.isin || p.extra.asset || p.extra.deck || p.extra.type) || "";
     return `<tr>
-      <td>${icon}${p.name}${sub ? ` <span class="tag">${sub}</span>` : ""}</td>
+      <td>${icon}${esc(p.name)}${sub ? ` <span class="tag">${esc(sub)}</span>` : ""}</td>
       <td class="num muted">${p.quantity.toLocaleString("es-ES")}</td>
       <td class="num muted">${p.unit_value ? money(p.unit_value, p.currency) : "—"}</td>
       <td class="num">${money(p.value, p.currency)}</td>
@@ -128,7 +132,7 @@ function renderPositions(data, target) {
       <thead><tr><th>Activo</th><th class="num">Cantidad</th>
         <th class="num">Precio ud.</th><th class="num">Valor</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="4" class="muted">Sin posiciones.</td></tr>`}</tbody>
-      <tfoot><tr><td colspan="3">Total ${data.source}</td>
+      <tfoot><tr><td colspan="3">Total ${esc(data.source)}</td>
         <td class="num pos">${money(data.total, cur)}</td></tr></tfoot>
     </table>`;
   if (window.AppFX) AppFX.onRender(target);
@@ -204,7 +208,7 @@ function renderCards() {
   if (!CARDS.length) { el.innerHTML = `<p class="hint">Aún no hay cartas. Añade una arriba o importa una decklist.</p>`; return; }
   el.innerHTML = CARDS.map((c, i) => `<div class="card-row">
     <span class="card-q">${c.qty}×</span>
-    <span class="card-n">${c.name}${c.set ? ` <span class="tag">${c.set.toUpperCase()}${c.cn ? " " + c.cn : ""}</span>` : ""}${c.foil ? ` <span class="tag tag-foil">foil</span>` : ""}</span>
+    <span class="card-n">${esc(c.name)}${c.set ? ` <span class="tag">${esc(c.set.toUpperCase())}${c.cn ? " " + esc(c.cn) : ""}</span>` : ""}${c.foil ? ` <span class="tag tag-foil">foil</span>` : ""}</span>
     <button type="button" class="card-del" data-i="${i}" aria-label="Quitar">×</button>
   </div>`).join("");
   $$(".card-del", el).forEach((b) => b.addEventListener("click", () => { CARDS.splice(+b.dataset.i, 1); renderCards(); saveCards(); }));
@@ -323,7 +327,7 @@ function bankRender() {
   const rows = Object.entries(c.cats).sort((a, b) => (b[1].gross - b[1].refund) - (a[1].gross - a[1].refund));
   $("#catTable tbody").innerHTML = rows.map(([cat, v]) => {
     const net = v.gross - v.refund, pct = c.net ? (net / c.net) * 100 : 0;
-    return `<tr><td>${cat}</td><td class="num muted">${money(-v.gross)}</td>
+    return `<tr><td>${esc(cat)}</td><td class="num muted">${money(-v.gross)}</td>
       <td class="num ${v.refund ? "pos" : "muted"}">${v.refund ? money(v.refund) : "—"}</td>
       <td class="num neg">${money(-net)}</td>
       <td class="num">${pct.toFixed(1)}%<div class="bar"><span style="width:${Math.max(0, pct)}%"></span></div></td></tr>`;
@@ -336,11 +340,11 @@ function bankRender() {
     const none = (sel === null || sel === undefined) ? " selected" : "";
     return `<option value=""${none}>— Ingreso real (no devolución) —</option>` +
       BANK.transactions.filter(isExp).map((e) =>
-        `<option value="${e.id}"${e.id === sel ? " selected" : ""}>${e.date} · ${e.concept} (${money(e.amount)})</option>`).join("");
+        `<option value="${e.id}"${e.id === sel ? " selected" : ""}>${esc(e.date)} · ${esc(e.concept)} (${money(e.amount)})</option>`).join("");
   };
   $("#bizumTable tbody").innerHTML = bizums.length ? bizums.map((b) => {
     const flag = b.recurring_income ? ` <span class="tag">posible ingreso recurrente</span>` : "";
-    return `<tr><td>${b.date}${flag}</td><td class="num pos">${money(b.amount)}</td>
+    return `<tr><td>${esc(b.date)}${flag}</td><td class="num pos">${money(b.amount)}</td>
       <td><select data-bizum="${b.id}">${opts(LINKS[b.id])}</select></td></tr>`;
   }).join("") : `<tr><td colspan="3" class="muted">No hay bizums recibidos.</td></tr>`;
   $$("#bizumTable select").forEach((s) => s.addEventListener("change", () => {

@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Datos locales (SQLite, inbox de PDFs)
+app/data/
+data/
+
+# Configuración local con credenciales
+app/config.json
+
+# Entornos
+.venv/
+venv/
+.env
