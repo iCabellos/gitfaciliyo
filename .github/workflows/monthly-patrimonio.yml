@@ -1,21 +1,21 @@
-name: Resumen mensual de patrimonio (WhatsApp)
+name: Resumen de patrimonio por WhatsApp (semanal)
 
-# El día 1 de cada mes, pide a la web que envíe por WhatsApp el patrimonio total
-# y su variación respecto al mes anterior. La web lee la base de datos y envía con
-# CallMeBot; aquí solo disparamos el endpoint protegido por token.
+# Cada domingo envía por WhatsApp el patrimonio total y su variación respecto al
+# periodo anterior. La web lee la base de datos y envía con CallMeBot; aquí solo
+# disparamos el endpoint. (También se puede ejecutar a mano con "Run workflow".)
 on:
   schedule:
-    - cron: "20 8 1 * *"     # día 1, 08:20 UTC ≈ 10:20 Europe/Madrid
+    - cron: "20 17 * * 0"    # domingo 17:20 UTC ≈ 19:20 Europe/Madrid
   workflow_dispatch:
 
 jobs:
   summary:
     runs-on: ubuntu-latest
     steps:
-      - name: Disparar resumen mensual
+      - name: Disparar resumen de patrimonio
         env:
           APP_URL: ${{ vars.APP_URL || 'https://mi-patrimonio.onrender.com' }}
+          TOKEN: ${{ secrets.SUMMARY_TOKEN }}
         run: |
-          curl -fsS -X POST \
-            "$APP_URL/api/monthly-summary?token=${{ secrets.SUMMARY_TOKEN }}" \
-            && echo "Resumen mensual solicitado."
+          curl -fsS -X POST "$APP_URL/api/monthly-summary?token=$TOKEN" \
+            && echo "Resumen de patrimonio solicitado."
