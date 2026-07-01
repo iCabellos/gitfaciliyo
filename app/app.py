@@ -35,10 +35,10 @@ from xml.sax.saxutils import escape as xml_escape
 from flask import Flask, jsonify, render_template, request
 
 from sources import (bank, trade_republic, steam, moxfield, db, ingest,
-                     wealthreader, patrimonio)
+                     wealthreader, patrimonio, autosync)
 from jobs.weekly_whatsapp import send_whatsapp
 
-APP_VERSION = "2026-06-r13-refactor"
+APP_VERSION = "2026-07-r14-autosync"
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -197,6 +197,74 @@ def api_monthly_summary():
         return jsonify({"error": "Sin datos."}), 404
     sent = send_whatsapp(patrimonio.whatsapp_message(s))
     return jsonify({"sent": bool(sent), "summary": s})
+
+
+# ---------------------------------------------------------------------------
+# Sincronización automática (imaginBank vía Wealth Reader + Trade Republic)
+# ---------------------------------------------------------------------------
+def _authorized(token_env="SUMMARY_TOKEN"):
+    expected = os.environ.get(token_env, "").strip()
+    return not expected or request.args.get("token", "") == expected
+
+
+@app.route("/api/autosync/status")
+def api_autosync_status():
+    """Estado de los conectores automáticos (claves y conexiones configuradas)."""
+    return jsonify(autosync.status())
+
+
+@app.route("/api/connections", methods=["GET", "POST"])
+@api_error()
+def api_connections():
+    """Conexiones de banca automática (Wealth Reader): imaginBank y otras."""
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        conns = autosync.save_wr_connection((body.get("name") or "").strip(),
+                                            (body.get("code") or "").strip(),
+                                            (body.get("token") or "").strip())
+        return jsonify({"ok": True, "connections": conns})
+    return jsonify(autosync.get_connections())
+
+
+@app.route("/api/tr/login", methods=["POST"])
+@api_error()
+def api_tr_login():
+    """Paso 1 del login de Trade Republic: dispara el 2FA (app/SMS)."""
+    from sources import traderepublic_api as tr
+    body = request.get_json(silent=True) or {}
+    phone = (body.get("phone") or "").strip()
+    pin = (body.get("pin") or "").strip()
+    if not phone or not pin:
+        raise ValueError("Indica 'phone' (+34…) y 'pin' de Trade Republic.")
+    return jsonify(tr.start_login(phone, pin))
+
+
+@app.route("/api/tr/2fa", methods=["POST"])
+@api_error()
+def api_tr_2fa():
+    """Paso 2: valida el código 2FA y guarda la sesión (no el PIN)."""
+    from sources import traderepublic_api as tr
+    body = request.get_json(silent=True) or {}
+    process_id = (body.get("process_id") or "").strip()
+    code = (body.get("code") or "").strip()
+    if not process_id or not code:
+        raise ValueError("Faltan 'process_id' y 'code' (el 2FA de Trade Republic).")
+    cookies = tr.complete_login(process_id, code)
+    autosync.save_tr_session(cookies)
+    return jsonify({"ok": True, "message": "Sesión de Trade Republic guardada."})
+
+
+@app.route("/api/weekly-sync", methods=["GET", "POST"])
+def api_weekly_sync():
+    """Tarea semanal: sincroniza todas las fuentes automáticas y avisa por WhatsApp."""
+    if not _authorized():
+        return jsonify({"error": "No autorizado."}), 403
+    report = autosync.run_all()
+    s = patrimonio.summary(db.get_snapshots())
+    if s:
+        report["sent"] = bool(send_whatsapp(patrimonio.whatsapp_message(s)))
+        report["summary"] = s
+    return jsonify(report)
 
 
 # ---------------------------------------------------------------------------

@@ -113,6 +113,35 @@
         </div>
         <div id="wrResult"></div>
       </details>
+
+      <details class="bulk" id="autoBox">
+        <summary>🔄 Sincronización automática semanal (imaginBank + Trade Republic)</summary>
+        <p class="hint">Conecta cada fuente una vez y una tarea semanal actualiza tu patrimonio sola,
+           sin adjuntar PDFs. imaginBank va por Wealth Reader; Trade Republic por su API no oficial
+           (guardamos la <em>sesión</em>, nunca tu PIN).</p>
+        <p class="hint" id="autoStatus"></p>
+
+        <h3>imaginBank · Wealth Reader</h3>
+        <div class="row">
+          <input type="text" id="imaginCode" placeholder="Entidad (p. ej. imagin)" value="imagin" />
+          <input type="text" id="imaginToken" placeholder="Token del widget de Wealth Reader" />
+          <button type="button" id="imaginSave">Guardar conexión</button>
+        </div>
+        <div id="imaginResult"></div>
+
+        <h3>Trade Republic</h3>
+        <div class="row">
+          <input type="text" id="trPhone" placeholder="Teléfono (+34…)" />
+          <input type="password" id="trPin" placeholder="PIN" />
+          <button type="button" id="trLogin">Enviar 2FA</button>
+        </div>
+        <div class="row" id="tr2faRow" style="display:none; margin-top:10px">
+          <input type="text" id="trCode" placeholder="Código 2FA (app o SMS)" />
+          <button type="button" id="tr2fa">Validar y guardar</button>
+        </div>
+        <div id="trResult2"></div>
+      </details>
+
       <div id="bankResult"></div>
     </section>
 

@@ -177,6 +177,66 @@ if (wrBtn) wrBtn.addEventListener("click", async () => {
   finally { wrBtn.disabled = false; }
 });
 
+// ---- Sincronización automática (imaginBank + Trade Republic) ------------
+function autoStatus() {
+  const el = $("#autoStatus"); if (!el) return;
+  fetch("/api/autosync/status").then((r) => r.json()).then((s) => {
+    const conns = Object.keys(s.connections || {});
+    el.innerHTML = `Wealth Reader: ${s.wealthreader_api_key ? "✅ API key" : "❌ falta WEALTHREADER_API_KEY"}`
+      + ` · Bancos conectados: ${conns.length ? esc(conns.join(", ")) : "ninguno"}`
+      + ` · Trade Republic: ${s.trade_republic_session ? "✅ sesión guardada" : "❌ sin sesión"}`;
+  }).catch(() => {});
+}
+const imaginSave = $("#imaginSave");
+if (imaginSave) imaginSave.addEventListener("click", async () => {
+  const target = $("#imaginResult");
+  const code = $("#imaginCode").value.trim(), token = $("#imaginToken").value.trim();
+  if (!code || !token) { setStatus(target, "Pon la entidad y el token del widget.", true); return; }
+  imaginSave.disabled = true; setStatus(target, "Guardando conexión…");
+  try {
+    const res = await fetch("/api/connections", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: code, code, token }),
+    });
+    const j = await res.json(); if (!res.ok) throw new Error(j.error || "Error");
+    setStatus(target, "Conexión guardada. La sincronización semanal la usará."); autoStatus();
+  } catch (e) { setStatus(target, e.message, true); } finally { imaginSave.disabled = false; }
+});
+let TR_PROCESS = null;
+const trLogin = $("#trLogin");
+if (trLogin) trLogin.addEventListener("click", async () => {
+  const target = $("#trResult2");
+  const phone = $("#trPhone").value.trim(), pin = $("#trPin").value.trim();
+  if (!phone || !pin) { setStatus(target, "Pon el teléfono (+34…) y el PIN.", true); return; }
+  trLogin.disabled = true; setStatus(target, "Pidiendo el 2FA a Trade Republic…");
+  try {
+    const res = await fetch("/api/tr/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, pin }),
+    });
+    const j = await res.json(); if (!res.ok) throw new Error(j.error || "Error");
+    TR_PROCESS = j.process_id; $("#tr2faRow").style.display = "flex";
+    setStatus(target, `Código enviado por ${esc(j.mode || "app")}. Introdúcelo abajo.`);
+  } catch (e) { setStatus(target, e.message, true); } finally { trLogin.disabled = false; }
+});
+const tr2fa = $("#tr2fa");
+if (tr2fa) tr2fa.addEventListener("click", async () => {
+  const target = $("#trResult2");
+  const code = $("#trCode").value.trim();
+  if (!code || !TR_PROCESS) { setStatus(target, "Introduce el código 2FA.", true); return; }
+  tr2fa.disabled = true; setStatus(target, "Validando y guardando la sesión…");
+  try {
+    const res = await fetch("/api/tr/2fa", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ process_id: TR_PROCESS, code }),
+    });
+    const j = await res.json(); if (!res.ok) throw new Error(j.error || "Error");
+    setStatus(target, "Sesión de Trade Republic guardada. La sync semanal la usará.");
+    $("#tr2faRow").style.display = "none"; autoStatus();
+  } catch (e) { setStatus(target, e.message, true); } finally { tr2fa.disabled = false; }
+});
+autoStatus();
+
 // ---- Magic: gestor de cartas claro -------------------------------------
 let CARDS = [];   // {qty, name, set, cn, foil}
 
