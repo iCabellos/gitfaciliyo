@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CSFLOAT_API_KEY: ${{ secrets.CSFLOAT_API_KEY }}
+      STEAM_ID64: ${{ secrets.STEAM_ID64 }}          # tu SteamID64 -> sigue TUS skins
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}       # opcional: leer tu lista de Magic guardada
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
