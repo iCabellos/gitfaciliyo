@@ -254,6 +254,9 @@ def api_steam():
     currency = request.args.get("currency", "eur")
     if not steamid or steamid.startswith("TU_"):
         raise ValueError("Indica tu SteamID64 (inventario en público).")
+    # Recuerda el SteamID para que el seguimiento diario siga TUS skins.
+    if db.get_setting("steam_id64", "") != steamid:
+        db.set_setting("steam_id64", steamid)
     key = f"steam:{steamid}:{currency}"
     return jsonify(_cached_daily(key, lambda: steam.analyze(steamid, currency),
                                  refresh=request.args.get("refresh") == "1"))
