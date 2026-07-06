@@ -294,6 +294,48 @@ select:focus { outline: none; border-color: rgba(255, 255, 255, .5); }
   .m-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 }
 
+/* ---------- Skins CS:GO como cartas (con imagen real y color de rareza) ---------- */
+.sk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.skcard { --rar: #8e8e93; position: relative; display: flex; flex-direction: column;
+  border-radius: 16px; border: 1px solid var(--line); overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .02));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); transition: transform .16s, box-shadow .16s, border-color .16s; }
+.skcard::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+  background: var(--rar); z-index: 2; }
+.skcard:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--rar) 55%, transparent);
+  box-shadow: 0 18px 40px -22px rgba(0, 0, 0, .9), 0 0 0 1px color-mix(in srgb, var(--rar) 40%, transparent); }
+.skcard.is-unpriced { opacity: .72; }
+
+.sk-media { position: relative; aspect-ratio: 4 / 3; display: grid; place-items: center; padding: 10px;
+  background:
+    radial-gradient(120% 120% at 50% 0%, color-mix(in srgb, var(--rar) 32%, transparent), transparent 62%),
+    linear-gradient(180deg, rgba(0, 0, 0, .25), rgba(0, 0, 0, .55)); }
+.sk-img { max-width: 100%; max-height: 100%; object-fit: contain;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .55)); }
+.sk-noimg { font-size: 40px; opacity: .5; }
+.sk-qty { position: absolute; top: 8px; left: 8px; z-index: 2; font: 700 11px "Sora", sans-serif;
+  color: var(--ink); background: rgba(0, 0, 0, .55); backdrop-filter: blur(4px);
+  padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); }
+.sk-rar { position: absolute; bottom: 8px; right: 8px; z-index: 2; width: 12px; height: 12px;
+  border-radius: 50%; background: var(--rar); box-shadow: 0 0 10px color-mix(in srgb, var(--rar) 80%, transparent);
+  border: 1.5px solid rgba(255, 255, 255, .35); }
+
+.sk-body { display: flex; flex-direction: column; gap: 7px; padding: 11px 13px 12px; flex: 1; }
+.sk-name { font-weight: 600; font-size: 13px; line-height: 1.28; overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 2.4em; }
+.sk-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+.sk-badge { font: 600 10px "Inter", sans-serif; color: var(--muted); padding: 2px 8px; border-radius: 999px;
+  background: rgba(255, 255, 255, .06); border: 1px solid var(--line); }
+.sk-badge.sk-stattrak { color: #0a0a0c; background: var(--amber); border: 0; font-weight: 700; }
+.sk-prices { display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  margin-top: auto; padding-top: 9px; border-top: 1px solid var(--line); }
+.sk-unit { color: var(--muted); font-size: 11px; }
+.sk-val { font-family: "Sora", sans-serif; font-weight: 800; font-size: 15px; }
+.sk-count { text-align: center; margin-top: 14px; }
+@media (max-width: 560px) {
+  .sk-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+}
+
 .status { font-size: 13px; color: var(--muted); margin: 12px 0 0; }
 .status.err { color: #d0d0d4; }
 .warn { color: var(--amber); font-size: 12.5px; margin: 8px 0 0; }
