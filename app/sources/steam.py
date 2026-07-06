@@ -58,8 +58,48 @@ def fetch_inventory(steamid, count=5000):
     return data
 
 
+def _tags_by_category(description):
+    """Indexa los `tags` de un item de Steam por su categoría (Rarity, Exterior…)."""
+    out = {}
+    for t in description.get("tags", []) or []:
+        cat = t.get("category")
+        if cat:
+            out[cat] = t
+    return out
+
+
+def _skin_meta(description):
+    """Extrae metadatos reales del item para pintar la carta (rareza, color, desgaste…).
+
+    Todo sale de las `tags` que devuelve Steam; se omite lo que no venga.
+    """
+    tags = _tags_by_category(description)
+    meta = {}
+    rarity = tags.get("Rarity")
+    if rarity:
+        meta["rarity"] = rarity.get("localized_tag_name", "")
+        color = rarity.get("color")
+        if color:
+            meta["rarity_color"] = "#" + color.lstrip("#")
+    exterior = tags.get("Exterior")
+    if exterior:
+        meta["exterior"] = exterior.get("localized_tag_name", "")
+    weapon = tags.get("Weapon")
+    if weapon:
+        meta["weapon"] = weapon.get("localized_tag_name", "")
+    quality = tags.get("Quality")   # StatTrak™ / Souvenir / Normal…
+    if quality:
+        q_internal = (quality.get("internal_name") or "").lower()
+        if q_internal not in ("", "normal"):
+            meta["quality"] = quality.get("localized_tag_name", "")
+    name_color = description.get("name_color")
+    if name_color:
+        meta["name_color"] = "#" + name_color.lstrip("#")
+    return meta
+
+
 def _group_items(inv):
-    """Devuelve {market_hash_name: {count, marketable, type, icon}}."""
+    """Devuelve {market_hash_name: {count, marketable, type, icon, meta…}}."""
     desc = {}
     for d in inv.get("descriptions", []):
         desc[(d["classid"], d["instanceid"])] = d
@@ -71,12 +111,16 @@ def _group_items(inv):
         name = d.get("market_hash_name")
         if not name:
             continue
-        e = items.setdefault(name, {
-            "count": 0,
-            "marketable": bool(d.get("marketable")),
-            "type": d.get("type", ""),
-            "icon": "https://community.cloudflare.steamstatic.com/economy/image/" + d.get("icon_url", ""),
-        })
+        e = items.get(name)
+        if e is None:
+            e = {
+                "count": 0,
+                "marketable": bool(d.get("marketable")),
+                "type": d.get("type", ""),
+                "icon": "https://community.cloudflare.steamstatic.com/economy/image/" + d.get("icon_url", ""),
+            }
+            e.update(_skin_meta(d))
+            items[name] = e
         e["count"] += int(a.get("amount", 1))
     return items
 
@@ -112,11 +156,13 @@ def analyze(steamid, currency="eur"):
     positions, warnings = [], []
     fetched = 0
     for name, info in sorted(items.items()):
+        meta = {k: info[k] for k in ("rarity", "rarity_color", "exterior", "weapon",
+                                     "quality", "name_color") if k in info}
         if not info["marketable"]:
             positions.append(Position(
                 source=SOURCE, category=CATEGORY, name=name, quantity=info["count"],
                 unit_value=0.0, value=0.0, extra={"type": info["type"], "icon": info["icon"],
-                                                  "marketable": False}).finalize())
+                                                  "marketable": False, **meta}).finalize())
             continue
         try:
             unit, hit_net = _price(name, cur, cache)
@@ -135,7 +181,7 @@ def analyze(steamid, currency="eur"):
             source=SOURCE, category=CATEGORY, name=name, quantity=info["count"],
             unit_value=unit, value=round(unit * info["count"], 2),
             currency=currency.upper(),
-            extra={"type": info["type"], "icon": info["icon"], "marketable": True},
+            extra={"type": info["type"], "icon": info["icon"], "marketable": True, **meta},
         ).finalize())
     _save_cache(cache)
     total = round(sum(p.value for p in positions), 2)

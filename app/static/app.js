@@ -151,10 +151,141 @@ $("#steamForm").addEventListener("submit", async (ev) => {
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "Error");
     setStatus(target, "");
-    renderPositions(json, target);
+    renderSkins(json, target);
   } catch (e) { setStatus(target, e.message, true); }
   finally { btn.disabled = false; }
 });
+
+// ---- CS:GO: vista de skins como cartas (imagen + rareza + desgaste) ----
+// Mismo espíritu que la colección Magic: buscador, orden y render progresivo,
+// pero con la imagen real del item y su color de rareza del Steam Market.
+const SKINS = { all: [], view: [], shown: 0, chunk: 60, q: "", sort: "value",
+                io: null, currency: "EUR" };
+
+function skinStats(list) {
+  const units = list.reduce((s, p) => s + (p.quantity || 0), 0);
+  const total = list.reduce((s, p) => s + (p.value || 0), 0);
+  const priced = list.filter((p) => p.unit_value);
+  const top = priced.reduce((m, p) => (p.unit_value || 0) > (m.unit_value || 0) ? p : m, priced[0] || {});
+  return [
+    ["Skins", units.toLocaleString("es-ES")],
+    ["Valor total", money(total, SKINS.currency)],
+    ["Más cara", top && top.unit_value ? money(top.unit_value, SKINS.currency) : "—", top && top.name ? esc(top.name) : ""],
+    ["Sin precio", String(list.length - priced.length)],
+  ];
+}
+
+function skinApplyFilters() {
+  const q = SKINS.q.toLowerCase();
+  let list = SKINS.all.filter((p) => {
+    if (!q) return true;
+    const x = p.extra || {};
+    const hay = [p.name, x.weapon, x.exterior, x.rarity, x.type].filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(q);
+  });
+  const by = {
+    value: (a, b) => (b.value || 0) - (a.value || 0),
+    value_asc: (a, b) => (a.value || 0) - (b.value || 0),
+    unit: (a, b) => (b.unit_value || 0) - (a.unit_value || 0),
+    unit_asc: (a, b) => (a.unit_value || 0) - (b.unit_value || 0),
+    qty: (a, b) => (b.quantity || 0) - (a.quantity || 0),
+    name: (a, b) => (a.name || "").localeCompare(b.name || "", "es"),
+  }[SKINS.sort] || (() => 0);
+  list.sort(by);
+  SKINS.view = list;
+  SKINS.shown = 0;
+}
+
+function skinTile(p) {
+  const x = p.extra || {};
+  const rar = x.rarity_color || "#8e8e93";
+  const badges = [];
+  if (x.quality) badges.push(`<span class="sk-badge sk-stattrak">${esc(x.quality)}</span>`);
+  if (x.exterior) badges.push(`<span class="sk-badge">${esc(x.exterior)}</span>`);
+  const img = x.icon ? `<img class="sk-img" loading="lazy" alt="${esc(p.name)}" src="${esc(x.icon)}">`
+                     : `<div class="sk-noimg">🔫</div>`;
+  const qty = p.quantity || 1;
+  const nameColor = x.name_color && x.name_color.toLowerCase() !== "#d2d2d2" ? ` style="color:${esc(x.name_color)}"` : "";
+  return `<article class="skcard${p.unit_value ? "" : " is-unpriced"}" style="--rar:${esc(rar)}">
+    <div class="sk-media">
+      ${img}
+      ${qty > 1 ? `<span class="sk-qty">×${qty}</span>` : ""}
+      ${x.rarity ? `<span class="sk-rar" title="${esc(x.rarity)}"></span>` : ""}
+    </div>
+    <div class="sk-body">
+      <div class="sk-name" title="${esc(p.name)}"${nameColor}>${esc(p.name)}</div>
+      ${badges.length ? `<div class="sk-badges">${badges.join("")}</div>` : ""}
+      <div class="sk-prices">
+        <span class="sk-unit">${p.unit_value ? money(p.unit_value, p.currency) + " ud." : "Sin precio"}</span>
+        <span class="sk-val">${money(p.value, p.currency)}</span>
+      </div>
+    </div>
+  </article>`;
+}
+
+function skinRenderChunk(grid) {
+  const next = SKINS.view.slice(SKINS.shown, SKINS.shown + SKINS.chunk);
+  if (!next.length) return;
+  grid.insertAdjacentHTML("beforeend", next.map(skinTile).join(""));
+  SKINS.shown += next.length;
+  const count = grid.parentElement.querySelector(".sk-count");
+  if (count) {
+    const left = SKINS.view.length - SKINS.shown;
+    count.textContent = `Mostrando ${SKINS.shown} de ${SKINS.view.length} skins` + (left ? " · sigue bajando" : "");
+  }
+}
+
+function skinRefresh(target) {
+  skinApplyFilters();
+  const grid = $("#skinGrid", target);
+  if (!grid) return;
+  grid.innerHTML = "";
+  const stats = $("#skinStats", target);
+  if (stats) stats.innerHTML = skinStats(SKINS.view).map(([l, v, sub]) =>
+    `<div class="m-stat"><span class="m-stat-l">${l}</span><span class="m-stat-v">${v}</span>${sub ? `<span class="m-stat-s">${sub}</span>` : ""}</div>`).join("");
+  skinRenderChunk(grid);
+  if (window.AppFX) AppFX.onRender(grid);
+}
+
+function renderSkins(data, target) {
+  SKINS.all = data.positions || [];
+  SKINS.currency = data.currency || "EUR";
+  SKINS.shown = 0; SKINS.q = ""; SKINS.sort = "value";
+  if (SKINS.io) { SKINS.io.disconnect(); SKINS.io = null; }
+  if (!SKINS.all.length) {
+    target.innerHTML = `${warningsHtml(data.warnings)}<p class="hint">No hay skins en el inventario (o está en privado).</p>`;
+    setContrib(data.category, data.total, data.month);
+    return;
+  }
+  target.innerHTML = `
+    <div class="m-statbar" id="skinStats"></div>
+    <div class="m-toolbar">
+      <div class="m-search"><span>🔎</span><input type="search" id="skinQ" placeholder="Buscar skin, arma o desgaste…" autocomplete="off"></div>
+      <select id="skinSort" aria-label="Ordenar">
+        <optgroup label="Valor total"><option value="value">Mayor ↓</option><option value="value_asc">Menor ↑</option></optgroup>
+        <optgroup label="Precio unidad"><option value="unit">Mayor ↓</option><option value="unit_asc">Menor ↑</option></optgroup>
+        <option value="qty">Cantidad ↓</option>
+        <option value="name">Nombre A-Z</option>
+      </select>
+    </div>
+    <div id="skinGrid" class="sk-grid"></div>
+    <p class="sk-count hint"></p>
+    ${warningsHtml(data.warnings)}`;
+
+  $("#skinQ", target).addEventListener("input", (e) => { SKINS.q = e.target.value; skinRefresh(target); });
+  $("#skinSort", target).addEventListener("change", (e) => { SKINS.sort = e.target.value; skinRefresh(target); });
+
+  skinRefresh(target);
+  const sentinel = document.createElement("div");
+  sentinel.className = "m-sentinel";
+  $("#skinGrid", target).after(sentinel);
+  SKINS.io = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) skinRenderChunk($("#skinGrid", target));
+  }, { rootMargin: "600px" });
+  SKINS.io.observe(sentinel);
+
+  setContrib(data.category, data.total, data.month);   // suma al patrimonio consolidado
+}
 
 // ---- Wealth Reader (banca automática) ----------------------------------
 const wrBtn = $("#wrBtn");

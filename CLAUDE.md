@@ -1,9 +1,9 @@
 # Preferencias de trabajo (iCabellos)
 
 ## Flujo de PRs
-- **Fusiona tú solo (autónomo).** No esperes aprobación para mergear: crea la rama,
-  commitea, abre el PR, espera CI en verde y **haz el merge tú mismo**. No preguntes
-  "¿lo fusiono?".
+- **Mergea SIEMPRE tú solo (autónomo).** No esperes aprobación para mergear: crea la
+  rama, commitea, abre el PR, espera CI en verde y **haz el merge tú mismo, siempre**.
+  Nunca preguntes "¿lo fusiono?".
 
 ## Estilo de código — REGLA DURA
 - **Nunca inventes nada.** El código siempre ha de ser **real**: APIs reales, datos
