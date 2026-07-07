@@ -1,0 +1,22 @@
+name: Sincronización semanal del patrimonio (imaginBank + Trade Republic)
+
+# Cada domingo por la mañana sincroniza automáticamente las fuentes conectadas
+# (imaginBank vía Wealth Reader y Trade Republic vía su sesión guardada),
+# actualiza los snapshots y envía el resumen por WhatsApp. La web hace todo el
+# trabajo; aquí solo disparamos el endpoint protegido con SUMMARY_TOKEN.
+on:
+  schedule:
+    - cron: "40 6 * * 0"     # domingo 06:40 UTC ≈ 08:40 Europe/Madrid
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar sincronización semanal
+        env:
+          APP_URL: ${{ vars.APP_URL || 'https://mi-patrimonio.onrender.com' }}
+          TOKEN: ${{ secrets.SUMMARY_TOKEN }}
+        run: |
+          curl -fsS -X POST "$APP_URL/api/weekly-sync?token=$TOKEN" \
+            && echo "Sincronización semanal solicitada."
