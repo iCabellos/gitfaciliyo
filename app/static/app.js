@@ -706,18 +706,26 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
 fetch("/api/snapshots").then((r) => r.json()).then((snaps) => {
   const months = Object.keys(snaps || {}).sort();
   if (!months.length) return;
-  // Variación mensual: total (sin flujos) del mes anterior.
+  // Última valoración conocida de cada categoría: cada fuente se actualiza a su
+  // ritmo (skins/cartas en vivo, banco/TR al subir extracto) y no debe
+  // desaparecer del total solo porque aún no tenga dato del mes en curso.
+  const latest = (upto) => {
+    const view = {};
+    for (const m of months.slice(0, upto)) {
+      for (const [k, v] of Object.entries(snaps[m])) {
+        if (!k.startsWith("_flow:")) view[k] = v;
+      }
+    }
+    return view;
+  };
+  // Variación: total con los últimos valores conocidos hasta el mes anterior.
   if (months.length > 1) {
-    const pm = snaps[months[months.length - 2]];
-    EVOL.prev = Object.entries(pm).reduce((s, [k, v]) => s + (k.startsWith("_flow:") ? 0 : v), 0);
+    EVOL.prev = Object.values(latest(months.length - 1)).reduce((s, v) => s + v, 0);
   }
-  const last = snaps[months[months.length - 1]];      // mes más reciente
-  for (const [k, v] of Object.entries(last)) {
-    if (k === "_flow:gastos") FLOWS.gastos = v;
-    else if (k === "_flow:ganancias") FLOWS.ganancias = v;
-    else if (k.startsWith("_flow:")) { /* inversión u otros: no se muestran como patrimonio */ }
-    else CONTRIB[k] = v;                              // categoría de patrimonio
-  }
+  Object.assign(CONTRIB, latest(months.length));
+  const last = snaps[months[months.length - 1]];      // flujos: solo del mes más reciente
+  if ("_flow:gastos" in last) FLOWS.gastos = last["_flow:gastos"];
+  if ("_flow:ganancias" in last) FLOWS.ganancias = last["_flow:ganancias"];
   renderSummary();
   if (window.Charts) window.Charts.refreshPie(CONTRIB);
   const hint = document.getElementById("summaryHint");

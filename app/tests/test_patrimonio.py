@@ -44,6 +44,39 @@ def test_summary_variacion_entre_meses():
     assert s["ganancias"] == 1800.0
 
 
+def test_summary_arrastra_ultimo_valor_de_cada_categoria():
+    # El banco no tiene dato de julio: se usa su último valor (junio) y se
+    # recuerda de qué mes viene, en vez de hacer desaparecer la categoría.
+    snaps = {
+        "2026-06": {"Liquidez (banco)": 500.0, "Skins CS:GO": 100.0},
+        "2026-07": {"Skins CS:GO": 120.0},
+    }
+    s = patrimonio.summary(snaps)
+    assert s["total"] == 620.0
+    assert s["categories"] == {"Liquidez (banco)": 500.0, "Skins CS:GO": 120.0}
+    assert s["category_months"] == {"Liquidez (banco)": "2026-06",
+                                    "Skins CS:GO": "2026-07"}
+    assert s["prev"] == 600.0
+    assert s["delta"] == 20.0
+
+
+def test_whatsapp_message_marca_datos_antiguos():
+    snaps = {
+        "2026-06": {"Liquidez (banco)": 500.0},
+        "2026-07": {"Skins CS:GO": 120.0},
+    }
+    msg = patrimonio.whatsapp_message(patrimonio.summary(snaps))
+    assert "Liquidez (banco): 500,00 € (de 2026-06)" in msg
+    assert "Skins CS:GO: 120,00 €\n" in msg     # dato fresco, sin marca
+
+
+def test_whatsapp_message_incluye_avisos():
+    snaps = {"2026-07": {"Skins CS:GO": 120.0}}
+    msg = patrimonio.whatsapp_message(patrimonio.summary(snaps),
+                                      warnings=["Cartas Magic no se pudo revalorizar: Moxfield caído"])
+    assert "⚠️ Cartas Magic no se pudo revalorizar: Moxfield caído" in msg
+
+
 def test_eur_formato_espanol():
     assert patrimonio.eur(1234.56) == "1.234,56 €"
     assert patrimonio.eur(0) == "0,00 €"
