@@ -35,10 +35,10 @@ from xml.sax.saxutils import escape as xml_escape
 from flask import Flask, jsonify, render_template, request
 
 from sources import (bank, trade_republic, steam, moxfield, db, ingest,
-                     wealthreader, patrimonio)
+                     wealthreader, patrimonio, revalue)
 from jobs.weekly_whatsapp import send_whatsapp
 
-APP_VERSION = "2026-06-r13-refactor"
+APP_VERSION = "2026-07-r14-revalue"
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -188,15 +188,25 @@ def api_summary():
 
 @app.route("/api/monthly-summary", methods=["GET", "POST"])
 def api_monthly_summary():
-    """Envía por WhatsApp el patrimonio y su variación (cron semanal)."""
+    """Envía por WhatsApp el patrimonio y su variación (cron semanal).
+
+    Antes de componer el mensaje revaloriza EN VIVO las skins (Steam Market) y
+    las cartas (Scryfall) con la configuración guardada, para que esas cifras
+    cambien cada semana sin abrir la web. Si una fuente configurada falla, el
+    error va en el propio mensaje (nunca se disfraza con el valor antiguo).
+    """
     expected = os.environ.get("SUMMARY_TOKEN", "").strip()
     if expected and request.args.get("token", "") != expected:
         return jsonify({"error": "No autorizado."}), 403
+    refreshed, refresh_errors = revalue.refresh_live()
     s = patrimonio.summary(db.get_snapshots())
     if not s:
-        return jsonify({"error": "Sin datos."}), 404
-    sent = send_whatsapp(patrimonio.whatsapp_message(s))
-    return jsonify({"sent": bool(sent), "summary": s})
+        return jsonify({"error": "Sin datos.", "refresh_errors": refresh_errors}), 404
+    warnings = [f"{cat} no se pudo revalorizar: {err}"
+                for cat, err in refresh_errors.items()]
+    sent = send_whatsapp(patrimonio.whatsapp_message(s, warnings=warnings))
+    return jsonify({"sent": bool(sent), "summary": s, "refreshed": refreshed,
+                    "refresh_errors": refresh_errors})
 
 
 # ---------------------------------------------------------------------------

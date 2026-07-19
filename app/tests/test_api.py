@@ -77,6 +77,31 @@ def test_monthly_summary_token(client, monkeypatch):
     assert client.post("/api/monthly-summary?token=secreto").status_code == 200
 
 
+def test_monthly_summary_revaloriza_skins_y_cartas(client, monkeypatch):
+    sent = {}
+    monkeypatch.setattr(app_module, "send_whatsapp",
+                        lambda msg: sent.update(msg=msg) or True)
+    monkeypatch.setattr(app_module.revalue, "refresh_live",
+                        lambda: ({"Skins CS:GO": 150.0}, {}))
+    client.post("/api/snapshot", json={"month": "2026-07", "category": "Acciones", "value": 5000.0})
+    body = client.post("/api/monthly-summary").get_json()
+    assert body["refreshed"] == {"Skins CS:GO": 150.0}
+    assert body["refresh_errors"] == {}
+
+
+def test_monthly_summary_avisa_si_una_fuente_falla(client, monkeypatch):
+    sent = {}
+    monkeypatch.setattr(app_module, "send_whatsapp",
+                        lambda msg: sent.update(msg=msg) or True)
+    monkeypatch.setattr(app_module.revalue, "refresh_live",
+                        lambda: ({}, {"Skins CS:GO": "Steam no deja leer el inventario."}))
+    client.post("/api/snapshot", json={"month": "2026-07", "category": "Acciones", "value": 5000.0})
+    r = client.post("/api/monthly-summary")
+    assert r.status_code == 200
+    assert "⚠️ Skins CS:GO no se pudo revalorizar" in sent["msg"]
+    assert "Steam no deja leer el inventario." in sent["msg"]
+
+
 def test_magic_requiere_entrada(client):
     r = client.post("/api/magic", json={})
     assert r.status_code == 400
