@@ -1,0 +1,11 @@
+{
+  "_comment": "MI configuración real (no la plantilla). Se versiona a propósito para que la web desplegada arranque configurada. Aquí solo van datos PÚBLICOS: el SteamID64 sale de la URL de mi perfil. Las credenciales (PIN, tokens, claves) van SOLO en variables de entorno.",
+  "currency": "eur",
+  "steam": {
+    "steamid64": "76561198110817711",
+    "_profile": "https://steamcommunity.com/profiles/76561198110817711/"
+  },
+  "moxfield": {
+    "default_deck": ""
+  }
+}

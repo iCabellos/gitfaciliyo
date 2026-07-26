@@ -19,40 +19,18 @@ Reglas:
 """
 
 import datetime
-import json
-import os
 
-from . import steam, moxfield, db, enablebanking, trade_republic_live, ingest
-
-_HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from . import (steam, moxfield, db, enablebanking, trade_republic_live, ingest,
+               settings)
 
 
 class NotConfigured(RuntimeError):
     """La fuente no está configurada: se omite sin considerarlo un fallo."""
 
 
-def _config_steamid():
-    try:
-        with open(os.path.join(_HERE, "config.json")) as fh:
-            cfg = json.load(fh)
-    except (OSError, ValueError):
-        return ""
-    return str((cfg.get("steam") or {}).get("steamid64", "")).strip()
-
-
-def _steamid():
-    """SteamID64 real: entorno > setting guardado por la web > config.json."""
-    for sid in (os.environ.get("STEAM_ID64", "").strip(),
-                str(db.get_setting("steam_id64", "") or "").strip(),
-                _config_steamid()):
-        if sid and not sid.startswith("TU_"):
-            return sid
-    return ""
-
-
 def refresh_skins(month):
     """Valora el inventario de Steam en vivo y guarda el snapshot del mes."""
-    sid = _steamid()
+    sid = settings.steam_id64()
     if not sid:
         raise NotConfigured("Sin SteamID64 guardado (ábrelo una vez en la web "
                             "o define STEAM_ID64).")

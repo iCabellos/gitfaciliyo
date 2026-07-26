@@ -288,9 +288,10 @@ def test_config_no_usa_nunca_el_fichero_de_ejemplo(client, monkeypatch, tmp_path
     no es el del usuario, que la web lo prefijara y que /api/steam valorara ese
     inventario como su patrimonio.
     """
-    import app as app_module
+    from sources import settings
 
-    monkeypatch.setattr(app_module, "CONFIG_PATH", str(tmp_path / "config.json"))
+    monkeypatch.setattr(settings, "CONFIG_PATH", str(tmp_path / "config.json"))
+    monkeypatch.setattr(settings, "SETTINGS_PATH", str(tmp_path / "settings.json"))
     body = client.get("/api/config").get_json()
     assert body["steamid"] == ""
     assert body["moxfield"] == ""
@@ -301,12 +302,13 @@ def test_config_no_usa_nunca_el_fichero_de_ejemplo(client, monkeypatch, tmp_path
 
 
 def test_config_lee_el_config_json_real(client, monkeypatch, tmp_path):
-    import app as app_module
+    from sources import settings
 
     real = tmp_path / "config.json"
     real.write_text(json.dumps({"steam": {"steamid64": "76561190000000001"},
                                 "moxfield": {"default_deck": "abc"}}))
-    monkeypatch.setattr(app_module, "CONFIG_PATH", str(real))
+    monkeypatch.setattr(settings, "CONFIG_PATH", str(real))
+    monkeypatch.setattr(settings, "SETTINGS_PATH", str(tmp_path / "settings.json"))
     body = client.get("/api/config").get_json()
     assert body["steamid"] == "76561190000000001"
     assert body["moxfield"] == "abc"
@@ -314,9 +316,10 @@ def test_config_lee_el_config_json_real(client, monkeypatch, tmp_path):
 
 def test_la_plantilla_no_lleva_datos_reales():
     """config.example.json está en el repo: no puede llevar un SteamID de verdad."""
-    import app as app_module
+    from sources import settings as settings_mod
 
-    example = os.path.join(os.path.dirname(app_module.CONFIG_PATH), "config.example.json")
+    example = os.path.join(os.path.dirname(settings_mod.__file__), os.pardir,
+                           "config.example.json")
     with open(example) as fh:
         cfg = json.load(fh)
     steamid = cfg["steam"]["steamid64"]

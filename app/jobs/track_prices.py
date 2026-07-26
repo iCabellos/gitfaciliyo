@@ -29,12 +29,11 @@ import datetime
 import json
 import os
 import sys
-import time
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 
-from sources import moxfield, steam, http, prices  # noqa: E402
+from sources import moxfield, steam, http, prices, settings  # noqa: E402
 
 DATA_DIR = prices.DATA_DIR
 HISTORY = prices.HISTORY_FILE
@@ -51,31 +50,10 @@ def _read(path, default):
 # --------------------------------------------------------------------------
 # Watchlist: se deriva de lo que realmente tienes
 # --------------------------------------------------------------------------
-def _steamid():
-    """SteamID64 de verdad: entorno > config.json real > setting guardado por la web.
-
-    No usa config.example.json (es solo una plantilla): así nunca seguimos un
-    inventario que no es tuyo.
-    """
-    sid = os.environ.get("STEAM_ID64", "").strip()
-    if sid:
-        return sid
-    cfg = _read(os.path.join(HERE, "config.json"), {}) or {}
-    sid = str((cfg.get("steam") or {}).get("steamid64", "")).strip()
-    if sid and not sid.startswith("TU_"):
-        return sid
-    try:
-        from sources import db
-        sid = str(db.get_setting("steam_id64", "") or "").strip()
-    except Exception:  # noqa: BLE001
-        sid = ""
-    return sid if sid and not sid.startswith("TU_") else ""
-
-
 def skins_from_inventory():
     """Skins vendibles del inventario público de Steam (las que de verdad tienes)."""
-    sid = _steamid()
-    if not sid or sid.startswith("TU_"):
+    sid = settings.steam_id64()
+    if not sid:
         return []
     try:
         items = steam._group_items(steam.fetch_inventory(sid))
@@ -172,25 +150,38 @@ def _csfloat_price(name, api_key):
 
 
 def skin_prices(names):
+    """Precio de cada skin. Devuelve (precios, avisos).
+
+    Comparte con `steam.analyze` la misma caché (TTL 6 h, en base de datos si la
+    hay): sin eso, abrir la web y ejecutar el cron seguidos duplicaban las
+    peticiones al Market y Steam cortaba a mitad. El ritmo y los reintentos por
+    429 los pone `steam._price`; si aun así corta, se para y se avisa en vez de
+    seguir pidiendo y quedarse con medio inventario en silencio.
+    """
     if not names:
-        return {}
+        return {}, []
     api_key = os.environ.get("CSFLOAT_API_KEY", "").strip()
-    cache = {}
-    out = {}
-    for i, name in enumerate(names):
+    cache = steam._load_cache()
+    out, warnings = {}, []
+    for name in names:
         val = None
         try:
             if api_key:
                 val = _csfloat_price(name, api_key)
             if val is None:
-                val, _ = steam._price(name, 3, cache)   # 3 = EUR
+                val, _hit_net = steam._price(name, 3, cache)   # 3 = EUR; ritmo en steam._price
+        except steam._RateLimited:
+            warnings.append(
+                f"Steam Market cortó por rate-limit (429) tras {len(out)} de "
+                f"{len(names)} skins. Se guarda lo obtenido; reintenta en unos "
+                "minutos (lo ya pedido queda en caché).")
+            break
         except Exception as exc:  # noqa: BLE001
-            print(f"  ! {name}: {exc}")
+            warnings.append(f"{name}: {exc}")
         if val is not None:
             out["skin:" + name] = round(val, 2)
-        if (i + 1) % 8 == 0:
-            time.sleep(1.2)   # rate-limit del Steam Market
-    return out
+    steam._save_cache(cache)
+    return out, warnings
 
 
 NOTHING_TO_TRACK = (
@@ -222,7 +213,8 @@ def main():
         raise RuntimeError(NOTHING_TO_TRACK)
     day_prices = {}
     day_prices.update(card_prices(wl["cards"]))
-    day_prices.update(skin_prices(wl["skins"]))
+    skins, warnings = skin_prices(wl["skins"])
+    day_prices.update(skins)
     if not day_prices:
         raise RuntimeError(
             f"Ninguna de las {len(wl['cards'])} cartas y {len(wl['skins'])} skins "
@@ -231,6 +223,15 @@ def main():
     to_file, to_db = prices.record(today, day_prices)
     print(f"[{today}] {to_file} precios en {HISTORY}"
           + (f" y {to_db} en la base de datos" if to_db else " (sin base de datos)"))
+    for w in warnings:
+        print(f"  ! {w}")
+    # Lo obtenido ya está guardado, pero un día incompleto no puede pasar por
+    # bueno: el trabajo se pone en rojo para que se vea y se reintente.
+    faltan = len(wl["skins"]) - len(skins)
+    if faltan > 0:
+        raise RuntimeError(
+            f"Día registrado a medias: faltan {faltan} de {len(wl['skins'])} skins. "
+            + (warnings[-1] if warnings else "Revisa los avisos de arriba."))
     return day_prices
 
 
