@@ -163,6 +163,78 @@ def test_prices_movers_endpoint_respeta_el_umbral(client, monkeypatch):
     assert client.get("/api/prices/movers?threshold=10").get_json()["movers"] == []
 
 
+def test_prices_weekly_incluye_el_patrimonio_completo(client, monkeypatch):
+    from sources import prices
+
+    monkeypatch.setattr(prices, "history", lambda days=None: {
+        "2026-07-12": {prices.TOTAL_KEY: 9000.0, "cat:Cartas Magic": 1000.0,
+                       "stock:Apple Inc.": 170.0, "card:Sol Ring": 3.00},
+        "2026-07-19": {prices.TOTAL_KEY: 9600.0, "cat:Cartas Magic": 1100.0,
+                       "stock:Apple Inc.": 180.5, "card:Sol Ring": 3.60},
+    })
+    body = client.get("/api/prices/weekly").get_json()
+    kinds = {i["key"]: i["kind"] for i in body["items"]}
+    assert kinds == {prices.TOTAL_KEY: "total", "cat:Cartas Magic": "cat",
+                     "stock:Apple Inc.": "stock", "card:Sol Ring": "card"}
+    # `portfolio` repite solo lo agregado, que es lo del gráfico de cabecera.
+    assert {p["key"] for p in body["portfolio"]} == {prices.TOTAL_KEY, "cat:Cartas Magic"}
+    total = next(p for p in body["portfolio"] if p["key"] == prices.TOTAL_KEY)
+    assert (total["prev"], total["price"], total["pct"]) == (9000.0, 9600.0, 6.7)
+    assert body["coverage"]["tracks_portfolio"] is True
+    assert body["total_key"] == prices.TOTAL_KEY
+
+
+def test_prices_weekly_filtra_por_tipo(client, monkeypatch):
+    from sources import prices
+
+    monkeypatch.setattr(prices, "history", lambda days=None: {
+        "2026-07-19": {prices.TOTAL_KEY: 9600.0, "card:Sol Ring": 3.60},
+    })
+    body = client.get("/api/prices/weekly?kind=card").get_json()
+    assert [i["key"] for i in body["items"]] == ["card:Sol Ring"]
+
+
+def test_prices_movers_incluye_categorias_y_total(client, monkeypatch):
+    from sources import prices
+
+    monkeypatch.setattr(prices, "history", lambda days=None: {
+        "2026-07-19": {prices.TOTAL_KEY: 9000.0, "cat:Acciones / ETFs": 1000.0},
+        "2026-07-26": {prices.TOTAL_KEY: 9600.0, "cat:Acciones / ETFs": 1200.0},
+    })
+    movers = client.get("/api/prices/movers").get_json()["movers"]
+    assert [m["kind"] for m in movers] == ["total", "cat"]
+    assert movers[0]["price_from"] == 9000.0 and movers[0]["price_to"] == 9600.0
+
+
+def test_prices_record_guarda_el_punto_del_patrimonio(client, monkeypatch):
+    from sources import db, prices
+
+    monkeypatch.setattr(prices, "write_file_history", lambda h: None)
+    client.post("/api/snapshot", json={"month": "2026-07", "category": "Acciones", "value": 5000.0})
+    db.set_holdings("2026-07", "Trade Republic", [
+        {"name": "Apple", "quantity": 3, "unit_value": 180.5, "value": 541.5}])
+    body = client.post("/api/prices/record").get_json()
+    assert body["recorded"] == 3          # total + categoría + acción
+    saved = db.get_price_history()
+    hoy = saved[max(saved)]
+    assert hoy[prices.TOTAL_KEY] == 5000.0
+    assert hoy["cat:Acciones"] == 5000.0
+    assert hoy["stock:Apple"] == 180.5
+
+
+def test_monthly_summary_registra_el_patrimonio_en_el_historico(client, monkeypatch):
+    """El resumen semanal deja su propio punto: el histórico no depende del cron."""
+    from sources import db, prices
+
+    monkeypatch.setattr(app_module, "send_whatsapp", lambda msg: True)
+    monkeypatch.setattr(app_module.revalue, "refresh_live", lambda: ({}, {}, {}))
+    monkeypatch.setattr(prices, "write_file_history", lambda h: None)
+    client.post("/api/snapshot", json={"month": "2026-07", "category": "Acciones", "value": 5000.0})
+    assert client.post("/api/monthly-summary").status_code == 200
+    saved = db.get_price_history()
+    assert saved[max(saved)][prices.TOTAL_KEY] == 5000.0
+
+
 def test_prices_endpoints_sin_historico(client, monkeypatch):
     from sources import prices
 

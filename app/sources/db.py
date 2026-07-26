@@ -202,6 +202,12 @@ def set_prices(day, prices):
                     day=day, item_key=key, price=price))
 
 
+def reset_prices():
+    _ensure()
+    with _engine.begin() as conn:
+        conn.execute(delete(price_history))
+
+
 def get_price_history(since=None):
     """Histórico completo: { 'YYYY-MM-DD': { item_key: precio } }.
 

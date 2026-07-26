@@ -125,7 +125,24 @@ def test_movers_lines_muestra_precio_anterior_y_actual():
 
 def test_movers_lines_sin_movimientos_lo_dice():
     lines = "\n".join(patrimonio.movers_lines([], threshold=5))
-    assert "Ninguna carta ni skin se movió más de un 5%" in lines
+    assert "Nada de tu patrimonio se movió más de un 5%" in lines
+
+
+def test_movers_lines_pone_primero_el_patrimonio_y_no_lo_recorta():
+    """El total y las categorías van delante y nunca se resumen como «y N más»."""
+    portfolio = [
+        {"kind": "total", "name": "Patrimonio", "pct": 6.2, "price_from": 9615.87,
+         "price_to": 10212.0, "direction": "up", "days": 7},
+        {"kind": "cat", "name": "Acciones / ETFs", "pct": -8.4, "price_from": 1083.67,
+         "price_to": 992.6, "direction": "down", "days": 7},
+    ]
+    items = [dict(MOVERS[1], name=f"Carta {i}") for i in range(20)]
+    lines = "\n".join(patrimonio.movers_lines(portfolio + items, threshold=5, limit=12))
+    assert lines.index("💼 Patrimonio") < lines.index("📦 Acciones / ETFs") < lines.index("Carta 0")
+    assert "💼 Patrimonio\n   🔺 9.615,87 € → 10.212,00 € (+6,2%)" in lines
+    assert "📦 Acciones / ETFs\n   🔻 1.083,67 € → 992,60 € (-8,4%)" in lines
+    # El recorte solo afecta a los artículos sueltos.
+    assert "…y 8 más" in lines
 
 
 def test_movers_lines_resume_cuando_hay_muchos():

@@ -18,12 +18,13 @@ Además incluye:
   apiladas del **patrimonio mensual** (según la fecha de cada documento) con línea
   de total, y mini-gráficas de evolución por categoría. El histórico se guarda en
   `data/snapshots.json`.
-- 🕒 **Histórico semanal de precios**, carta a carta y skin a skin: el precio de
-  cierre de cada semana, consultable en la pestaña «Histórico semanal» con su
-  serie completa y la variación respecto a la semana anterior.
+- 🕒 **Histórico semanal de TODO el patrimonio**: en la misma serie conviven el
+  patrimonio total, cada categoría, cada acción/ETF, cada carta y cada skin. Se
+  consulta en la pestaña «Histórico semanal», con el gráfico del patrimonio
+  semana a semana, la variación de cada elemento y su serie completa al tocarlo.
 - 📲 **Resumen semanal por WhatsApp** con el patrimonio, su variación y **todo lo
-  que se haya movido un ±5%** (nombre del elemento, precio anterior → precio
-  actual). Si una fuente no está conectada o falla, sale un ⚠️ en el propio
+  que se haya movido un ±5%** —el total, una categoría, una acción, una carta o
+  una skin— con su valor anterior → valor actual. Si una fuente no está conectada o falla, sale un ⚠️ en el propio
   mensaje: nunca se repite una cifra vieja como si fuera nueva.
 - 📄 **Registro de valores**: qué acciones/ETFs tienes y **cuántos títulos** de
   cada uno, mes a mes.
@@ -84,7 +85,7 @@ app/
     enablebanking.py     # imagin/CaixaBank por PSD2 (Enable Banking)
     steam.py             # Steam Inventory + Steam Market -> skins CS:GO
     moxfield.py          # Moxfield/decklist + precios Scryfall en vivo -> cartas Magic
-    prices.py            # histórico de precios: diario, serie semanal y movimientos ±5%
+    prices.py            # histórico de TODO el patrimonio: diario, semanal y movimientos ±5%
     patrimonio.py        # resumen del patrimonio y mensaje de WhatsApp
     revalue.py           # revalorización en vivo de las 4 fuentes
     db.py                # snapshots, caché, histórico de precios y registro de valores
@@ -141,6 +142,18 @@ BTC,0.05,3120.00
   con la clave del dispositivo + websocket `compactPortfolio`/`cash`/`ticker`).
   Puede romperse si TR cambia el protocolo; cuando pase, el fallo se ve en el
   WhatsApp semanal y queda la subida manual de PDF/CSV.
-- **Histórico de precios**: se guarda por duplicado en
-  `data/price_history.json` (commiteado por GitHub Actions) y en la tabla
-  `price_history` de la base de datos (lo que lee la web).
+- **Histórico**: se guarda por duplicado en `data/price_history.json`
+  (commiteado por GitHub Actions) y en la tabla `price_history` de la base de
+  datos (lo que lee la web). La clave lleva delante el tipo, de modo que la
+  misma serie cubre todo el patrimonio:
+
+  | Clave | Qué guarda |
+  |---|---|
+  | `total:Patrimonio` | el patrimonio completo |
+  | `cat:<categoría>` | el valor de una categoría entera |
+  | `stock:<valor>` | el precio por título de una acción/ETF |
+  | `card:<carta>` · `skin:<skin>` | el precio por unidad |
+
+  Los artículos los registra el cron diario; el patrimonio lo registra cada
+  resumen semanal (y el botón «Registrar punto de hoy» de la web), así que la
+  serie del patrimonio no depende de que Steam o Magic estén configurados.
