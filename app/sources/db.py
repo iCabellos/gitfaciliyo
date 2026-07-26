@@ -2,9 +2,11 @@
 Capa de base de datos: persistencia compartida (móvil/PC/amigos) y caché diaria.
 
 Usa PostgreSQL en producción (variable DATABASE_URL) y SQLite en local como
-respaldo. Dos cosas:
+respaldo. Cuatro cosas:
   * snapshots: histórico mensual del patrimonio { (mes, categoría) -> valor }.
   * valuation_cache: respuestas costosas (Steam, Scryfall) cacheadas 1 vez/día.
+  * price_history: precio diario de cada carta/skin (histórico consultable).
+  * holdings: posiciones con nombre y cantidad (acciones/ETFs de Trade Republic).
 """
 
 import datetime
@@ -60,6 +62,28 @@ settings = Table(
     "settings", _meta,
     Column("skey", String(120), primary_key=True),
     Column("svalue", Text),
+)
+# Precio de cada carta/skin, un registro por día y elemento. La clave del
+# elemento es la misma del histórico en fichero ('card:Sol Ring', 'skin:AK-47…').
+price_history = Table(
+    "price_history", _meta,
+    Column("day", String(10), primary_key=True),
+    Column("item_key", String(255), primary_key=True),
+    Column("price", Float, nullable=False),
+)
+# Posiciones con nombre y cantidad (acciones/ETFs). Se reemplazan por completo
+# cada vez que llega un extracto o una lectura de la API: son una foto del mes.
+holdings = Table(
+    "holdings", _meta,
+    Column("month", String(7), primary_key=True),
+    Column("source", String(60), primary_key=True),
+    Column("name", String(255), primary_key=True),
+    Column("isin", String(20)),
+    Column("quantity", Float),
+    Column("unit_value", Float),
+    Column("value", Float),
+    Column("currency", String(8)),
+    Column("updated", String(32)),
 )
 
 _ready = False
@@ -156,3 +180,95 @@ def set_setting(key, value):
         res = conn.execute(update(settings).where(settings.c.skey == key).values(svalue=blob))
         if res.rowcount == 0:
             conn.execute(insert(settings).values(skey=key, svalue=blob))
+
+
+# ---- histórico de precios de cartas/skins --------------------------------
+def set_prices(day, prices):
+    """Guarda los precios de un día: { 'card:Sol Ring': 3.85, … }."""
+    _ensure()
+    if not prices:
+        return
+    with _engine.begin() as conn:
+        for key, price in prices.items():
+            if price is None:
+                continue
+            price = round(float(price), 2)
+            res = conn.execute(update(price_history)
+                               .where(price_history.c.day == day,
+                                      price_history.c.item_key == key)
+                               .values(price=price))
+            if res.rowcount == 0:
+                conn.execute(insert(price_history).values(
+                    day=day, item_key=key, price=price))
+
+
+def get_price_history(since=None):
+    """Histórico completo: { 'YYYY-MM-DD': { item_key: precio } }.
+
+    `since` (fecha ISO) acota la consulta para no traer años de datos.
+    """
+    _ensure()
+    query = select(price_history.c.day, price_history.c.item_key, price_history.c.price)
+    if since:
+        query = query.where(price_history.c.day >= since)
+    out = {}
+    with _engine.connect() as conn:
+        for row in conn.execute(query):
+            out.setdefault(row.day, {})[row.item_key] = row.price
+    return out
+
+
+# ---- posiciones con nombre y cantidad (acciones/ETFs) --------------------
+def set_holdings(month, source, rows):
+    """Reemplaza las posiciones de (mes, fuente) por `rows`.
+
+    rows: [{name, isin, quantity, unit_value, value, currency}]. Es una foto
+    completa: lo que no venga en `rows` deja de existir para ese mes y fuente.
+    """
+    _ensure()
+    now = datetime.datetime.utcnow().isoformat(timespec="seconds")
+    with _engine.begin() as conn:
+        conn.execute(delete(holdings).where(holdings.c.month == month,
+                                            holdings.c.source == source))
+        seen = set()
+        for r in rows:
+            name = (r.get("name") or "").strip()[:255]
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            conn.execute(insert(holdings).values(
+                month=month, source=source, name=name,
+                isin=(r.get("isin") or "")[:20],
+                quantity=float(r.get("quantity") or 0),
+                unit_value=round(float(r.get("unit_value") or 0), 4),
+                value=round(float(r.get("value") or 0), 2),
+                currency=(r.get("currency") or "EUR")[:8],
+                updated=now))
+
+
+def get_holdings(month=None, source=None):
+    """Posiciones guardadas, más recientes primero. Sin `month`, todas."""
+    _ensure()
+    query = select(holdings)
+    if month:
+        query = query.where(holdings.c.month == month)
+    if source:
+        query = query.where(holdings.c.source == source)
+    with _engine.connect() as conn:
+        rows = [dict(r._mapping) for r in conn.execute(query)]
+    rows.sort(key=lambda r: (r["month"], r["value"] or 0), reverse=True)
+    return rows
+
+
+def reset_holdings():
+    _ensure()
+    with _engine.begin() as conn:
+        conn.execute(delete(holdings))
+
+
+def holdings_months():
+    """Meses con posiciones guardadas, del más reciente al más antiguo."""
+    _ensure()
+    with _engine.connect() as conn:
+        rows = conn.execute(select(holdings.c.month).distinct())
+    return sorted({r.month for r in rows}, reverse=True)

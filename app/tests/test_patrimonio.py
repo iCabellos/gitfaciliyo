@@ -99,3 +99,65 @@ def test_whatsapp_message_baja():
     snaps = {"2026-06": {"Acciones": 1000.0}, "2026-07": {"Acciones": 800.0}}
     msg = patrimonio.whatsapp_message(patrimonio.summary(snaps))
     assert "📉" in msg
+
+
+# ---- movimientos de precio dentro del mensaje ----------------------------
+MOVERS = [
+    {"key": "skin:AK-47 | Redline (Field-Tested)", "kind": "skin",
+     "name": "AK-47 | Redline (Field-Tested)", "pct": -12.0, "delta": -4.8,
+     "price_from": 40.0, "price_to": 35.2, "direction": "down", "days": 7,
+     "date_from": "2026-07-19", "date_to": "2026-07-26"},
+    {"key": "card:Sol Ring", "kind": "card", "name": "Sol Ring", "pct": 10.0,
+     "delta": 0.3, "price_from": 3.0, "price_to": 3.3, "direction": "up", "days": 7,
+     "date_from": "2026-07-19", "date_to": "2026-07-26"},
+]
+
+
+def test_movers_lines_muestra_precio_anterior_y_actual():
+    lines = "\n".join(patrimonio.movers_lines(MOVERS, threshold=5))
+    assert "Movimientos ≥5% esta semana" in lines
+    assert "(últimos 7 días)" in lines
+    assert "🔫 AK-47 | Redline (Field-Tested)" in lines
+    assert "🔻 40,00 € → 35,20 € (-12,0%)" in lines
+    assert "🃏 Sol Ring" in lines
+    assert "🔺 3,00 € → 3,30 € (+10,0%)" in lines
+
+
+def test_movers_lines_sin_movimientos_lo_dice():
+    lines = "\n".join(patrimonio.movers_lines([], threshold=5))
+    assert "Ninguna carta ni skin se movió más de un 5%" in lines
+
+
+def test_movers_lines_resume_cuando_hay_muchos():
+    muchos = [dict(MOVERS[1], name=f"Carta {i}") for i in range(20)]
+    lines = "\n".join(patrimonio.movers_lines(muchos, threshold=5, limit=12))
+    assert "Carta 11" in lines
+    assert "Carta 12" not in lines
+    assert "…y 8 más" in lines
+
+
+def test_whatsapp_message_incluye_los_movimientos():
+    snaps = {"2026-07": {"Skins CS:GO": 120.0}}
+    msg = patrimonio.whatsapp_message(patrimonio.summary(snaps), movers=MOVERS, threshold=5)
+    assert "Movimientos ≥5% esta semana" in msg
+    assert "40,00 € → 35,20 €" in msg
+    assert msg.rstrip().endswith("Mi patrimonio · resumen automático")
+
+
+def test_whatsapp_message_sin_movers_no_pone_la_seccion():
+    snaps = {"2026-07": {"Skins CS:GO": 120.0}}
+    assert "Movimientos" not in patrimonio.whatsapp_message(patrimonio.summary(snaps))
+
+
+def test_whatsapp_message_resume_las_acciones_registradas():
+    snaps = {"2026-07": {"Acciones / ETFs": 1500.0}}
+    holdings = [{"name": "Apple", "quantity": 3.0}, {"name": "S&P 500", "quantity": 8.267789}]
+    msg = patrimonio.whatsapp_message(patrimonio.summary(snaps), holdings=holdings)
+    assert "📄 Acciones/ETFs: 2 valores · 11,2678 títulos" in msg
+
+
+def test_qty_formato_espanol():
+    assert patrimonio.qty(3) == "3"
+    assert patrimonio.qty(1234) == "1.234"
+    assert patrimonio.qty(8.267789) == "8,2678"
+    assert patrimonio.qty(10.5) == "10,5"

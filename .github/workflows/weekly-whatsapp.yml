@@ -1,10 +1,10 @@
-name: WhatsApp semanal (subidas >10%)
+name: WhatsApp precios de la semana (±5%, manual)
 
-# Cada lunes avisa por WhatsApp (CallMeBot, gratis) de las cartas/skins que
-# subieron más del 10% algún día de la semana. Lee el histórico del repo.
+# Los movimientos de precio ya viajan DENTRO del resumen semanal de patrimonio
+# (monthly-patrimonio.yml), así que este workflow ya no tiene cron: enviaba un
+# segundo mensaje con la misma información. Se queda como disparo MANUAL para
+# probar la alerta de precios por separado.
 on:
-  schedule:
-    - cron: "7 17 * * 0"     # domingo 17:07 UTC ≈ 19:07 Europe/Madrid (verano; 18:07 en invierno)
   workflow_dispatch:
 
 jobs:
@@ -13,15 +13,16 @@ jobs:
     env:
       CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
       CALLMEBOT_PHONE: ${{ secrets.CALLMEBOT_PHONE || '34640253466' }}
-      ALERT_THRESHOLD: "10"
-      # En un disparo manual (prueba) envía siempre, aunque no haya subidas.
-      ALERT_SEND_EMPTY: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}   # histórico de precios compartido con la web
+      ALERT_THRESHOLD: "5"
+      # Disparo manual = prueba: envía siempre, aunque no haya movimientos.
+      ALERT_SEND_EMPTY: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r app/requirements.txt
-      - name: Calcular subidas y enviar WhatsApp
+      - name: Calcular movimientos ±5% y enviar WhatsApp
         working-directory: app
         run: python -m jobs.weekly_whatsapp

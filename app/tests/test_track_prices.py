@@ -5,7 +5,6 @@ Steam y la lista de Magic guardada (o un override explícito).
 """
 
 import json
-import os
 
 from jobs import track_prices as tp
 
@@ -72,10 +71,47 @@ def test_load_watchlist_nunca_usa_el_ejemplo(monkeypatch):
     assert wl == {"cards": [], "skins": []}
 
 
-def test_main_no_escribe_nada_si_watchlist_vacia(monkeypatch, tmp_path):
+def test_main_falla_en_voz_alta_si_watchlist_vacia(monkeypatch, tmp_path):
+    """Sin nada que seguir NO se escribe histórico, pero el trabajo falla.
+
+    Terminar en silencio es lo que dejó el histórico congelado durante semanas
+    sin que se notara: ahora el cron se pone en rojo.
+    """
+    import pytest
+
     hist = tmp_path / "price_history.json"
-    monkeypatch.setattr(tp, "HISTORY", str(hist))
+    monkeypatch.setattr(tp.prices, "HISTORY_FILE", str(hist))
     monkeypatch.setattr(tp, "load_watchlist", lambda: {"cards": [], "skins": []})
-    out = tp.main()
-    assert out == {}
+    with pytest.raises(RuntimeError, match="Nada que seguir"):
+        tp.main()
     assert not hist.exists()      # no genera histórico con datos inventados
+
+
+def test_main_falla_si_ninguna_fuente_devuelve_precio(monkeypatch, tmp_path):
+    import pytest
+
+    monkeypatch.setattr(tp.prices, "HISTORY_FILE", str(tmp_path / "price_history.json"))
+    monkeypatch.setattr(tp, "load_watchlist",
+                        lambda: {"cards": ["Sol Ring"], "skins": []})
+    monkeypatch.setattr(tp, "card_prices", lambda names: {})
+    monkeypatch.setattr(tp, "skin_prices", lambda names: {})
+    with pytest.raises(RuntimeError, match="no registra un día vacío|día vacío"):
+        tp.main()
+
+
+def test_main_registra_precios_en_fichero_y_db(monkeypatch, tmp_path):
+    from sources import db, prices
+
+    hist = tmp_path / "price_history.json"
+    monkeypatch.setattr(prices, "HISTORY_FILE", str(hist))
+    monkeypatch.setattr(tp, "load_watchlist",
+                        lambda: {"cards": ["Sol Ring"], "skins": ["AK-47 | Redline (Field-Tested)"]})
+    monkeypatch.setattr(tp, "card_prices", lambda names: {"card:Sol Ring": 3.85})
+    monkeypatch.setattr(tp, "skin_prices",
+                        lambda names: {"skin:AK-47 | Redline (Field-Tested)": 37.5})
+    out = tp.main()
+    assert out == {"card:Sol Ring": 3.85, "skin:AK-47 | Redline (Field-Tested)": 37.5}
+    saved = json.loads(hist.read_text())
+    assert list(saved.values())[0]["card:Sol Ring"] == 3.85
+    # El mismo dato queda en la base de datos, que es de donde lo lee la web.
+    assert any(day["card:Sol Ring"] == 3.85 for day in db.get_price_history().values())

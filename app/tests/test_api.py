@@ -82,7 +82,7 @@ def test_monthly_summary_revaloriza_skins_y_cartas(client, monkeypatch):
     monkeypatch.setattr(app_module, "send_whatsapp",
                         lambda msg: sent.update(msg=msg) or True)
     monkeypatch.setattr(app_module.revalue, "refresh_live",
-                        lambda: ({"Skins CS:GO": 150.0}, {}))
+                        lambda: ({"Skins CS:GO": 150.0}, {}, {}))
     client.post("/api/snapshot", json={"month": "2026-07", "category": "Acciones", "value": 5000.0})
     body = client.post("/api/monthly-summary").get_json()
     assert body["refreshed"] == {"Skins CS:GO": 150.0}
@@ -94,12 +94,116 @@ def test_monthly_summary_avisa_si_una_fuente_falla(client, monkeypatch):
     monkeypatch.setattr(app_module, "send_whatsapp",
                         lambda msg: sent.update(msg=msg) or True)
     monkeypatch.setattr(app_module.revalue, "refresh_live",
-                        lambda: ({}, {"Skins CS:GO": "Steam no deja leer el inventario."}))
+                        lambda: ({}, {"Skins CS:GO": "Steam no deja leer el inventario."}, {}))
     client.post("/api/snapshot", json={"month": "2026-07", "category": "Acciones", "value": 5000.0})
     r = client.post("/api/monthly-summary")
     assert r.status_code == 200
     assert "⚠️ Skins CS:GO no se pudo revalorizar" in sent["msg"]
     assert "Steam no deja leer el inventario." in sent["msg"]
+
+
+def test_monthly_summary_avisa_de_las_fuentes_sin_conectar(client, monkeypatch):
+    """Una fuente sin conectar deja de saltarse en silencio: sale en el mensaje.
+
+    Es la causa de recibir el mismo importe semana tras semana sin explicación.
+    """
+    sent = {}
+    monkeypatch.setattr(app_module, "send_whatsapp",
+                        lambda msg: sent.update(msg=msg) or True)
+    monkeypatch.setattr(app_module.revalue, "refresh_live",
+                        lambda: ({}, {}, {"Acciones / ETFs": "Trade Republic no está emparejado."}))
+    client.post("/api/snapshot", json={"month": "2026-07", "category": "Acciones", "value": 5000.0})
+    body = client.post("/api/monthly-summary").get_json()
+    assert body["not_connected"] == {"Acciones / ETFs": "Trade Republic no está emparejado."}
+    assert "⚠️ Acciones / ETFs no está conectado" in sent["msg"]
+
+
+def test_monthly_summary_incluye_los_movimientos_de_precio(client, monkeypatch):
+    from sources import prices
+
+    sent = {}
+    monkeypatch.setattr(app_module, "send_whatsapp",
+                        lambda msg: sent.update(msg=msg) or True)
+    monkeypatch.setattr(app_module.revalue, "refresh_live", lambda: ({}, {}, {}))
+    monkeypatch.setattr(prices, "history", lambda days=None: {
+        "2026-07-19": {"card:Sol Ring": 3.00, "skin:AK-47 | Redline (FT)": 40.00},
+        "2026-07-26": {"card:Sol Ring": 3.30, "skin:AK-47 | Redline (FT)": 35.20},
+    })
+    client.post("/api/snapshot", json={"month": "2026-07", "category": "Acciones", "value": 5000.0})
+    body = client.post("/api/monthly-summary").get_json()
+    assert {m["name"] for m in body["movers"]} == {"Sol Ring", "AK-47 | Redline (FT)"}
+    assert "3,00 € → 3,30 €" in sent["msg"]
+    assert "40,00 € → 35,20 €" in sent["msg"]
+
+
+def test_prices_weekly_endpoint(client, monkeypatch):
+    from sources import prices
+
+    monkeypatch.setattr(prices, "history", lambda days=None: {
+        "2026-07-10": {"card:Sol Ring": 3.00},
+        "2026-07-17": {"card:Sol Ring": 3.60},
+    })
+    body = client.get("/api/prices/weekly").get_json()
+    assert body["items"][0]["name"] == "Sol Ring"
+    assert body["items"][0]["price"] == 3.60
+    assert body["items"][0]["prev"] == 3.00
+    assert body["items"][0]["pct"] == 20.0
+    assert len(body["items"][0]["points"]) == 2
+    assert body["coverage"]["days"] == 2
+
+
+def test_prices_movers_endpoint_respeta_el_umbral(client, monkeypatch):
+    from sources import prices
+
+    monkeypatch.setattr(prices, "history", lambda days=None: {
+        "2026-07-10": {"card:Sol Ring": 3.00},
+        "2026-07-26": {"card:Sol Ring": 3.20},      # +6,7%
+    })
+    assert len(client.get("/api/prices/movers?threshold=5").get_json()["movers"]) == 1
+    assert client.get("/api/prices/movers?threshold=10").get_json()["movers"] == []
+
+
+def test_prices_endpoints_sin_historico(client, monkeypatch):
+    from sources import prices
+
+    monkeypatch.setattr(prices, "history", lambda days=None: {})
+    weekly = client.get("/api/prices/weekly").get_json()
+    assert weekly["items"] == []
+    assert weekly["coverage"]["days"] == 0        # se dice que no hay nada
+    assert client.get("/api/prices/movers").get_json()["movers"] == []
+
+
+def test_holdings_endpoint(client):
+    from sources import db
+
+    db.set_holdings("2026-07", "Trade Republic", [
+        {"name": "Apple", "isin": "US0378331005", "quantity": 3, "unit_value": 180.5,
+         "value": 541.5, "currency": "EUR"},
+        {"name": "S&P 500 EUR (Acc)", "isin": "IE00BK5BQT80", "quantity": 8.267789,
+         "unit_value": 129.26, "value": 1068.69, "currency": "EUR"},
+    ])
+    body = client.get("/api/holdings").get_json()
+    assert body["month"] == "2026-07"
+    assert {h["name"]: h["quantity"] for h in body["holdings"]} == {
+        "Apple": 3.0, "S&P 500 EUR (Acc)": 8.267789}
+    assert body["total"] == 1610.19
+    assert body["titles"] == 11.2678
+
+
+def test_holdings_endpoint_vacio(client):
+    body = client.get("/api/holdings").get_json()
+    assert body["holdings"] == []
+    assert body["months"] == []
+
+
+def test_imagin_y_tr_reportan_que_no_estan_conectados(client):
+    assert client.get("/api/imagin/status").get_json()["connected"] is False
+    assert client.get("/api/trade-republic/status").get_json()["paired"] is False
+    # 409: no es un fallo del servidor, es que falta autorizar la fuente.
+    r = client.post("/api/trade-republic/live")
+    assert r.status_code == 409
+    assert r.get_json()["connected"] is False
+    assert client.post("/api/imagin/refresh").status_code == 409
 
 
 def test_magic_requiere_entrada(client):

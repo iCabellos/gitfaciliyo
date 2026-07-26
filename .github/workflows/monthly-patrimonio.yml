@@ -1,8 +1,11 @@
 name: Resumen de patrimonio por WhatsApp (semanal)
 
-# Cada domingo envía por WhatsApp el patrimonio total y su variación respecto al
-# periodo anterior. La web lee la base de datos y envía con CallMeBot; aquí solo
-# disparamos el endpoint. (También se puede ejecutar a mano con "Run workflow".)
+# Cada domingo envía por WhatsApp el mensaje semanal completo: patrimonio total,
+# su variación, los movimientos de precio ≥5% de cada carta/skin (con el precio
+# anterior y el actual) y un aviso por cada fuente que no esté conectada o haya
+# fallado. Antes de componerlo, el servidor revaloriza EN VIVO skins, cartas,
+# imagin (PSD2) y Trade Republic. Aquí solo disparamos el endpoint.
+# (También se puede ejecutar a mano con "Run workflow".)
 on:
   schedule:
     - cron: "20 17 * * 0"    # domingo 17:20 UTC ≈ 19:20 Europe/Madrid

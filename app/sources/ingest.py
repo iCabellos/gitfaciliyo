@@ -33,6 +33,7 @@ def process(path):
         r = trade_republic.parse(path)
         month = r.get("month") or this_month
         db.set_snapshot(month, r["category"], r["total"])
+        persist_positions(month, trade_republic.SOURCE, r["positions"])
         return {"kind": "tr", "month": month, "category": r["category"], "value": r["total"],
                 "summary": f"📈 Trade Republic: {r['total']:.2f} € guardado para {month} "
                            f"({len(r['positions'])} posiciones)."}
@@ -45,6 +46,22 @@ def process(path):
     return {"kind": "bank", "month": month, "category": "Liquidez (banco)", "value": value,
             "summary": f"🏦 Banco {month}: saldo {value:.2f} €, gastos {agg.get('gastos', 0):.2f} €, "
                        f"ganancias {agg.get('ganancias', 0):.2f} € ({len(r['transactions'])} mov.)."}
+
+
+def persist_positions(month, source, positions):
+    """Guarda el registro de posiciones (nombre y cantidad) de un mes y fuente.
+
+    Es lo que permite consultar «qué valores tengo y cuántos títulos de cada
+    uno», no solo el importe total de la categoría.
+    """
+    if not month or not positions:
+        return 0
+    rows = [{"name": p.get("name"), "isin": (p.get("extra") or {}).get("isin", ""),
+             "quantity": p.get("quantity"), "unit_value": p.get("unit_value"),
+             "value": p.get("value"), "currency": p.get("currency", "EUR")}
+            for p in positions if p.get("name")]
+    db.set_holdings(month, source, rows)
+    return len(rows)
 
 
 def persist_bank_aggregates(agg):

@@ -59,11 +59,47 @@
     <!-- NAV -->
     <nav class="tabs glass reveal" id="tabs">
       <button data-tab="graficos" class="active"><span>📊</span> Gráficos</button>
+      <button data-tab="historico"><span>🕒</span> Histórico semanal</button>
       <button data-tab="banco"><span>🏦</span> Banco / Gastos</button>
       <button data-tab="tr"><span>📈</span> Trade Republic</button>
       <button data-tab="csgo"><span>🔫</span> CS:GO Skins</button>
       <button data-tab="magic"><span>🃏</span> Cartas Magic</button>
     </nav>
+
+    <!-- HISTÓRICO SEMANAL DE PRECIOS -->
+    <section class="panel glass tabpane" id="pane-historico">
+      <div class="panel-head">
+        <div class="icon-chip">🕒</div>
+        <div><h2>Histórico semanal · carta a carta y skin a skin</h2>
+          <p class="sub2">Precio de cierre de cada semana. Se marcan los movimientos
+             de al menos <b id="histThreshold">5</b>% respecto a la semana anterior,
+             suban o bajen.</p></div>
+      </div>
+      <div class="m-statbar" id="histStats"></div>
+      <div id="histWarn"></div>
+
+      <h3 style="margin-top:20px">Movimientos de la última semana</h3>
+      <div id="histMovers"></div>
+
+      <div class="list-head" style="margin-top:22px">
+        <h3>Todos los elementos <span class="count-pill" id="histCount" hidden></span></h3>
+        <div class="list-tools">
+          <div class="m-search"><span>🔎</span>
+            <input type="search" id="histQ" placeholder="Buscar carta o skin…" autocomplete="off"></div>
+          <select id="histKind" aria-label="Tipo">
+            <option value="">Cartas y skins</option>
+            <option value="card">Solo cartas</option>
+            <option value="skin">Solo skins</option>
+          </select>
+        </div>
+      </div>
+      <div id="histTable"></div>
+      <div class="chart-card" id="histDetail" hidden>
+        <h3 id="histDetailName">—</h3>
+        <p class="hint" id="histDetailSub"></p>
+        <div class="chart-wrap"><canvas id="histChart"></canvas></div>
+      </div>
+    </section>
 
     <!-- GRÁFICOS -->
     <section class="panel glass tabpane active" id="pane-graficos">
@@ -101,6 +137,22 @@
         <button type="submit">Analizar</button>
       </form>
 
+      <details class="bulk" id="imaginBox" open>
+        <summary>🔗 Conectar imagin por API (PSD2 · Enable Banking) <span class="tag" id="imaginState">comprobando…</span></summary>
+        <p class="hint">Lee tu saldo y tus movimientos directamente del banco, sin subir PDF.
+           Autorizas una vez en la app de imagin (SCA) y el consentimiento vale ~90 días;
+           cuando caduque, el resumen semanal te avisará y bastará con volver a autorizar.
+           Requiere <code>ENABLE_BANKING_APP_ID</code>, la clave privada y
+           <code>ENABLE_BANKING_REDIRECT_URL</code> en el servidor.</p>
+        <div class="row">
+          <button type="button" id="imaginAuthBtn">1 · Autorizar en imagin</button>
+          <input type="text" id="imaginCode" placeholder="2 · Pega aquí el code del retorno" />
+          <button type="button" id="imaginSessionBtn">Conectar</button>
+          <button type="button" class="m-chip" id="imaginRefreshBtn">↻ Actualizar saldo ahora</button>
+        </div>
+        <div id="imaginResult"></div>
+      </details>
+
       <details class="bulk" id="wrBox">
         <summary>🔗 O conecta tu banco automáticamente (Wealth Reader)</summary>
         <p class="hint">Trae los movimientos sin subir PDF y los clasifica igual. El widget de Wealth
@@ -123,12 +175,42 @@
         <div><h2>Trade Republic · acciones y ETFs</h2>
           <p class="sub2">Reconoce el «Extracto del patrimonio neto» en PDF. CSV: <code>name,isin,quantity,price,value</code>.</p></div>
       </div>
+      <details class="bulk" id="trApiBox" open>
+        <summary>🔗 Conectar Trade Republic por API <span class="tag" id="trApiState">comprobando…</span></summary>
+        <p class="hint">Lee tu cartera real (valores, títulos y efectivo) sin subir el extracto.
+           Se empareja el dispositivo UNA vez con tu teléfono, tu PIN y el código que te manda
+           Trade Republic; después el resumen semanal se actualiza solo. Es una API no oficial:
+           si TR cambia el protocolo, verás el fallo y siempre queda la subida por PDF/CSV.</p>
+        <div class="row">
+          <input type="text" id="trPhone" placeholder="Teléfono (+34…)" />
+          <input type="password" id="trPin" placeholder="PIN" class="small" />
+          <button type="button" id="trPairBtn">1 · Pedir código</button>
+          <input type="text" id="trCode" placeholder="2 · Código recibido" class="small" />
+          <button type="button" id="trPairVerifyBtn">Emparejar</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button type="button" id="trLiveBtn">↻ Traer mi cartera ahora</button>
+          <button type="button" class="m-chip danger" id="trUnpairBtn">Desemparejar</button>
+        </div>
+        <div id="trApiResult"></div>
+      </details>
+
       <form class="row" data-upload="/api/trade-republic" data-field="file" data-target="trResult">
         <label class="filebox"><input type="file" accept=".pdf,.csv" hidden>
           <span>Arrastra o elige el PDF o CSV de Trade Republic</span></label>
         <button type="submit">Cargar</button>
       </form>
       <div id="trResult"></div>
+
+      <div class="list-head" style="margin-top:24px">
+        <h3>Registro de valores <span class="count-pill" id="holdCount" hidden></span></h3>
+        <div class="list-tools">
+          <select id="holdMonth" aria-label="Mes"></select>
+        </div>
+      </div>
+      <p class="hint">Nombre y número de títulos de cada acción/ETF, tal y como quedó
+         registrado ese mes (por API o por extracto).</p>
+      <div id="holdTable"></div>
     </section>
 
     <!-- CS:GO -->
@@ -198,6 +280,8 @@
   <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
   <script src="{{ url_for('static', filename='charts.js') }}"></script>
+  <script src="{{ url_for('static', filename='history.js') }}"></script>
+  <script src="{{ url_for('static', filename='connect.js') }}"></script>
   <script src="{{ url_for('static', filename='anim.js') }}"></script>
 </body>
 </html>
