@@ -38,8 +38,21 @@ pip install -r requirements.txt
 python app.py            # http://127.0.0.1:5000
 ```
 
-(Opcional) Copia `config.example.json` a `config.json` y pon tu SteamID64 y tu
-mazo de Moxfield por defecto. `config.json` está en `.gitignore`.
+### Configuración
+
+`settings.json` (versionado) lleva la configuración real y pública: SteamID64 y
+mazo de Moxfield por defecto. Por eso la web desplegada arranca ya configurada.
+
+El orden de precedencia lo decide `sources/settings.py`, y es el mismo para la
+web, el resumen semanal y el cron:
+
+1. Variable de entorno (`STEAM_ID64`) — lo que defina el servidor o el cron.
+2. `config.json` — configuración local, en `.gitignore` (desarrollo).
+3. Ajuste en la base de datos — lo último que guardaste desde la web.
+4. `settings.json` — la configuración versionada.
+
+`config.example.json` es solo una **plantilla** y NUNCA entra en esa cadena.
+Los secretos de verdad (PIN, tokens, claves) van solo en variables de entorno.
 
 ## Conectar las fuentes por API (una sola vez)
 
@@ -86,6 +99,7 @@ app/
     steam.py             # Steam Inventory + Steam Market -> skins CS:GO
     moxfield.py          # Moxfield/decklist + precios Scryfall en vivo -> cartas Magic
     prices.py            # histórico de TODO el patrimonio: diario, semanal y movimientos ±5%
+    settings.py          # ÚNICO sitio que resuelve la configuración (SteamID, mazo, divisa)
     patrimonio.py        # resumen del patrimonio y mensaje de WhatsApp
     revalue.py           # revalorización en vivo de las 4 fuentes
     db.py                # snapshots, caché, histórico de precios y registro de valores
@@ -130,8 +144,12 @@ BTC,0.05,3120.00
 - **Scryfall** (precios Magic) y **Steam Market** (precios skins): APIs públicas,
   funcionan tal cual. Scryfall se consulta en lotes de 75 cartas; si una carta solo
   tiene precio en USD se indica y no se suma al total en €.
-- **Steam Inventory**: requiere inventario **público**. Los precios se **cachean**
-  en `sources/.cache/` (6 h) y se respeta el límite de peticiones del Market.
+- **Steam Inventory**: requiere inventario **público**. La descarga **pagina**
+  (Steam sirve como mucho 2000 objetos por petición; pedir más hace que rechace
+  la petición entera). Los precios se cachean 6 h **en la base de datos**, que
+  comparten el cron y la web: con cachés separadas se duplicaban las peticiones
+  y el Market cortaba a mitad de inventario. El ritmo por defecto es de 3 s
+  entre peticiones (`STEAM_MARKET_DELAY`), con reintento y espera ante un 429.
 - **Moxfield**: su API suele bloquear el acceso automático (Cloudflare). Por eso la
   vía recomendada es **pegar la decklist** exportada; igualmente se intenta la API
   si das una URL/ID de mazo.

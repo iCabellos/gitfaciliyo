@@ -17,7 +17,7 @@ def _inventory(names_marketable, names_unmarketable=()):
 
 
 def test_skins_from_inventory_solo_vendibles(monkeypatch):
-    monkeypatch.setenv("STEAM_ID64", "76561190000000000")
+    monkeypatch.setattr(tp.settings, "steam_id64", lambda: "76561190000000000")
     monkeypatch.setattr(tp.steam, "fetch_inventory", lambda sid, **k: {"raw": sid})
     monkeypatch.setattr(tp.steam, "_group_items",
                         lambda inv: _inventory(["AK-47 | Redline (Field-Tested)"],
@@ -27,9 +27,8 @@ def test_skins_from_inventory_solo_vendibles(monkeypatch):
 
 
 def test_skins_from_inventory_sin_steamid(monkeypatch):
-    monkeypatch.delenv("STEAM_ID64", raising=False)
-    monkeypatch.setattr(tp, "_read", lambda p, d: d)         # sin config.json
-    monkeypatch.setattr(tp, "_steamid", lambda: "")
+    """Sin SteamID configurado no se sigue nada (y no se toca la red)."""
+    monkeypatch.setattr(tp.settings, "steam_id64", lambda: "")
     assert tp.skins_from_inventory() == []
 
 
@@ -115,9 +114,44 @@ def test_main_falla_si_ninguna_fuente_devuelve_precio(monkeypatch, tmp_path):
     monkeypatch.setattr(tp, "load_watchlist",
                         lambda: {"cards": ["Sol Ring"], "skins": []})
     monkeypatch.setattr(tp, "card_prices", lambda names: {})
-    monkeypatch.setattr(tp, "skin_prices", lambda names: {})
+    monkeypatch.setattr(tp, "skin_prices", lambda names: ({}, []))
     with pytest.raises(RuntimeError, match="no registra un día vacío|día vacío"):
         tp.main()
+
+
+def test_skin_prices_para_y_avisa_si_steam_corta(monkeypatch):
+    """Un 429 a mitad no puede pasar por «esta skin no tiene precio»."""
+    precios = {"A": 10.0, "B": 20.0}
+
+    def fake_price(name, cur, cache):
+        if name == "C":
+            raise tp.steam._RateLimited()
+        return precios[name], True
+
+    monkeypatch.setattr(tp.steam, "_price", fake_price)
+    monkeypatch.setattr(tp.steam, "_load_cache", lambda: {})
+    monkeypatch.setattr(tp.steam, "_save_cache", lambda c: None)
+    out, warnings = tp.skin_prices(["A", "B", "C", "D"])
+    assert out == {"skin:A": 10.0, "skin:B": 20.0}      # se guarda lo obtenido
+    assert len(warnings) == 1
+    assert "429" in warnings[0] and "2 de 4" in warnings[0]
+
+
+def test_main_se_pone_en_rojo_si_el_dia_queda_incompleto(monkeypatch, tmp_path):
+    """Guarda lo que tenga, pero un día a medias no puede pasar por bueno."""
+    import pytest
+
+    hist = tmp_path / "price_history.json"
+    monkeypatch.setattr(tp.prices, "HISTORY_FILE", str(hist))
+    monkeypatch.setattr(tp.prices, "record_portfolio", lambda *a, **k: 0)
+    monkeypatch.setattr(tp, "load_watchlist",
+                        lambda: {"cards": [], "skins": ["A", "B", "C"]})
+    monkeypatch.setattr(tp, "skin_prices",
+                        lambda names: ({"skin:A": 1.0}, ["Steam cortó (429)"]))
+    with pytest.raises(RuntimeError, match="faltan 2 de 3"):
+        tp.main()
+    # …pero lo obtenido SÍ queda guardado, no se tira.
+    assert json.loads(hist.read_text())[max(json.loads(hist.read_text()))] == {"skin:A": 1.0}
 
 
 def test_main_registra_precios_en_fichero_y_db(monkeypatch, tmp_path):
@@ -129,7 +163,7 @@ def test_main_registra_precios_en_fichero_y_db(monkeypatch, tmp_path):
                         lambda: {"cards": ["Sol Ring"], "skins": ["AK-47 | Redline (Field-Tested)"]})
     monkeypatch.setattr(tp, "card_prices", lambda names: {"card:Sol Ring": 3.85})
     monkeypatch.setattr(tp, "skin_prices",
-                        lambda names: {"skin:AK-47 | Redline (Field-Tested)": 37.5})
+                        lambda names: ({"skin:AK-47 | Redline (Field-Tested)": 37.5}, []))
     out = tp.main()
     assert out == {"card:Sol Ring": 3.85, "skin:AK-47 | Redline (Field-Tested)": 37.5}
     saved = json.loads(hist.read_text())

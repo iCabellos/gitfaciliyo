@@ -44,7 +44,6 @@ import base64
 import datetime
 import functools
 import hashlib
-import json
 import logging
 import os
 import re
@@ -56,7 +55,7 @@ from flask import Flask, jsonify, render_template, request
 
 from sources import (bank, trade_republic, trade_republic_live, steam, moxfield,
                      db, ingest, wealthreader, enablebanking, patrimonio,
-                     prices, revalue)
+                     prices, revalue, settings)
 from jobs.weekly_whatsapp import send_whatsapp, coverage_warnings
 
 APP_VERSION = "2026-07-r15-apis"
@@ -69,26 +68,19 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
 _HERE = os.path.dirname(__file__)
-CONFIG_PATH = os.path.join(_HERE, "config.json")
 
 
 # ---------------------------------------------------------------------------
 # Utilidades
 # ---------------------------------------------------------------------------
 def load_config():
-    """Lee TU config.json. Si no existe, no hay configuración: {}.
+    """Configuración de ficheros (`settings.json` + `config.json`).
 
-    NUNCA cae en config.example.json. Ese fichero es una plantilla y está en el
-    repo; usarlo como respaldo hacía que la web propusiera —y valorara— un
-    inventario de Steam que no es el tuyo, y que ese id acabara guardado como si
-    lo hubieras elegido. Sin config.json, cada fuente pide su dato y falla a la
-    vista si no se lo das.
+    La cadena completa —incluido el entorno y lo guardado desde la web— vive en
+    `sources/settings.py`, que es el único sitio que decide de dónde sale cada
+    ajuste. `config.example.json` no entra: es una plantilla.
     """
-    try:
-        with open(CONFIG_PATH) as fh:
-            return json.load(fh)
-    except (OSError, ValueError):
-        return {}
+    return settings.files()
 
 
 def api_error(status=502):
@@ -177,11 +169,11 @@ def favicon():
 
 @app.route("/api/config")
 def api_config():
-    cfg = load_config()
+    """Configuración efectiva que la web usa para precargar sus campos."""
     return jsonify({
-        "currency": cfg.get("currency", "eur"),
-        "steamid": cfg.get("steam", {}).get("steamid64", ""),
-        "moxfield": cfg.get("moxfield", {}).get("default_deck", ""),
+        "currency": settings.currency(),
+        "steamid": settings.steam_id64(),
+        "moxfield": settings.moxfield_deck(),
     })
 
 
@@ -500,9 +492,9 @@ def _cached_daily(key, compute, refresh=False):
 @app.route("/api/steam")
 @api_error()
 def api_steam():
-    steamid = (request.args.get("steamid") or load_config().get("steam", {}).get("steamid64", "")).strip()
-    currency = request.args.get("currency", "eur")
-    if not steamid or steamid.startswith("TU_"):
+    steamid = settings.real_value(request.args.get("steamid")) or settings.steam_id64()
+    currency = request.args.get("currency", settings.currency())
+    if not steamid:
         raise ValueError("Indica tu SteamID64 (inventario en público).")
     # Recuerda el SteamID para que el seguimiento diario siga TUS skins.
     if db.get_setting("steam_id64", "") != steamid:
