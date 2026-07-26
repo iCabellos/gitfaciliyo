@@ -56,7 +56,10 @@ Los secretos de verdad (PIN, tokens, claves) van solo en variables de entorno.
 
 ## Conectar las fuentes por API (una sola vez)
 
-Con esto el resumen semanal se actualiza solo, sin subir nada a mano:
+Todo se hace desde la pestaña **⚙️ Configuración** de la web, que muestra el
+estado real de cada fuente —lo hecho sale marcado, lo que falta con lo que hay
+que hacer exactamente— y lleva un contador de fuentes pendientes en la propia
+pestaña. Con esto el resumen semanal se actualiza solo, sin subir nada a mano:
 
 1. **imagin** → pestaña *Banco*, «Conectar imagin por API». Pulsa *Autorizar*,
    autoriza en la app de imagin (SCA) y pega el `code` del retorno. El
@@ -100,6 +103,7 @@ app/
     moxfield.py          # Moxfield/decklist + precios Scryfall en vivo -> cartas Magic
     prices.py            # histórico de TODO el patrimonio: diario, semanal y movimientos ±5%
     settings.py          # ÚNICO sitio que resuelve la configuración (SteamID, mazo, divisa)
+    setup.py             # estado de cada fuente para el menú de Configuración
     patrimonio.py        # resumen del patrimonio y mensaje de WhatsApp
     revalue.py           # revalorización en vivo de las 4 fuentes
     db.py                # snapshots, caché, histórico de precios y registro de valores
@@ -108,7 +112,7 @@ app/
     weekly_whatsapp.py   # alerta de precios ±5% por WhatsApp (disparo manual)
     scheduler.py         # programador en proceso (APScheduler) para producción
   templates/index.html   # panel con pestañas
-  static/                # app.js, charts.js, history.js, connect.js, anim.js, styles.css
+  static/                # app.js, charts.js, history.js, connect.js, setup.js, anim.js, styles.css
   Dockerfile · Procfile · render.yaml · .env.example · DEPLOY.md   # despliegue
 ```
 
