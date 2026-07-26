@@ -32,6 +32,10 @@ API:
     POST /api/trade-republic/pair/verify {code} completa el emparejado
     POST /api/trade-republic/live               cartera en vivo
 
+    -- menú de configuración --
+    GET  /api/setup                             qué falta en cada fuente
+    POST /api/setup/steam     {steamid}         guarda tu SteamID64
+
     -- histórico semanal de TODO el patrimonio --
     GET  /api/prices/weekly[?kind=cat,card]     serie SEMANAL (total, categorías,
                                                 acciones, cartas y skins)
@@ -55,7 +59,7 @@ from flask import Flask, jsonify, render_template, request
 
 from sources import (bank, trade_republic, trade_republic_live, steam, moxfield,
                      db, ingest, wealthreader, enablebanking, patrimonio,
-                     prices, revalue, settings)
+                     prices, revalue, settings, setup)
 from jobs.weekly_whatsapp import send_whatsapp, coverage_warnings
 
 APP_VERSION = "2026-07-r15-apis"
@@ -175,6 +179,31 @@ def api_config():
         "steamid": settings.steam_id64(),
         "moxfield": settings.moxfield_deck(),
     })
+
+
+# ---------------------------------------------------------------------------
+# Menú de configuración: qué falta para que cada fuente se actualice sola
+# ---------------------------------------------------------------------------
+@app.route("/api/setup")
+@api_error(500)
+def api_setup():
+    """Estado real de cada fuente. Nunca devuelve el valor de un secreto."""
+    return jsonify(setup.status())
+
+
+@app.route("/api/setup/steam", methods=["POST"])
+@api_error()
+def api_setup_steam():
+    """Guarda tu SteamID64 (acepta también la URL del perfil)."""
+    body = request.get_json(silent=True) or {}
+    raw = (body.get("steamid") or "").strip()
+    match = re.search(r"\d{17}", raw)
+    if not match:
+        raise ValueError("El SteamID64 son 17 dígitos. Pega el número o la URL "
+                         "de tu perfil (steamcommunity.com/profiles/765611…).")
+    steamid = match.group(0)
+    db.set_setting("steam_id64", steamid)
+    return jsonify({"steamid": steamid, "saved": True})
 
 
 # ---------------------------------------------------------------------------

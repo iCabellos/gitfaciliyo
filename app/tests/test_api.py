@@ -326,6 +326,35 @@ def test_la_plantilla_no_lleva_datos_reales():
     assert steamid.startswith("TU_"), f"la plantilla lleva un SteamID real: {steamid}"
 
 
+def test_setup_endpoint(client):
+    body = client.get("/api/setup").get_json()
+    assert [s["id"] for s in body["sources"]] == ["imagin", "trade_republic",
+                                                  "steam", "magic"]
+    assert "environment" in body and "pending" in body
+    for fuente in body["sources"]:
+        assert fuente["steps"], f"{fuente['id']} sin pasos que seguir"
+
+
+def test_setup_steam_guarda_y_acepta_la_url_del_perfil(client):
+    from sources import db
+
+    r = client.post("/api/setup/steam",
+                    json={"steamid": "https://steamcommunity.com/profiles/76561198110817711/"})
+    assert r.status_code == 200
+    assert r.get_json()["steamid"] == "76561198110817711"
+    assert db.get_setting("steam_id64") == "76561198110817711"
+    # Y también el número pelado.
+    r = client.post("/api/setup/steam", json={"steamid": " 76561190000000002 "})
+    assert r.get_json()["steamid"] == "76561190000000002"
+
+
+def test_setup_steam_rechaza_lo_que_no_es_un_steamid(client):
+    for malo in ("", "no soy un id", "12345"):
+        r = client.post("/api/setup/steam", json={"steamid": malo})
+        assert r.status_code == 400, malo
+        assert "17 dígitos" in r.get_json()["error"]
+
+
 def test_magic_requiere_entrada(client):
     r = client.post("/api/magic", json={})
     assert r.status_code == 400

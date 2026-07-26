@@ -6,6 +6,9 @@ import pytest
 
 from sources import settings
 
+# Referencia al original, antes de que ningún fixture lo sustituya.
+_DB_SETTING_REAL = settings._db_setting
+
 
 @pytest.fixture()
 def aislado(monkeypatch, tmp_path):
@@ -74,19 +77,17 @@ def test_config_json_se_fusiona_sobre_settings_json(aislado):
 
 
 def test_sin_base_de_datos_no_es_un_error(aislado, monkeypatch):
-    def db_rota():
+    """Si la base de datos no responde, se sigue con los ficheros y ya está."""
+    from sources import db
+
+    def rota(*a, **k):
         raise RuntimeError("sin base de datos")
 
-    monkeypatch.setattr(settings, "_db_setting",
-                        lambda key: settings.real_value(db_rota()))
+    # El fixture neutraliza `_db_setting`; aquí queremos el de verdad.
+    monkeypatch.setattr(settings, "_db_setting", _DB_SETTING_REAL)
+    monkeypatch.setattr(db, "get_setting", rota)
+    assert settings._db_setting("steam_id64") == ""
     _escribe(aislado / "settings.json", {"steam": {"steamid64": "76561190000000001"}})
-    with pytest.raises(RuntimeError):
-        settings._db_setting("steam_id64")      # el doble sí lanza…
-    # …pero el módulo real se lo traga y sigue con los ficheros.
-    monkeypatch.undo()
-    monkeypatch.setattr(settings, "CONFIG_PATH", str(aislado / "config.json"))
-    monkeypatch.setattr(settings, "SETTINGS_PATH", str(aislado / "settings.json"))
-    monkeypatch.delenv("STEAM_ID64", raising=False)
     assert settings.steam_id64() == "76561190000000001"
 
 

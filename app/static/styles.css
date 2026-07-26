@@ -336,6 +336,40 @@ select:focus { outline: none; border-color: rgba(255, 255, 255, .5); }
   .sk-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 }
 
+/* ---------- Menú de configuración ---------- */
+.tab-pill { display: inline-grid; place-items: center; min-width: 18px; height: 18px;
+  margin-left: 6px; padding: 0 5px; border-radius: 999px; background: var(--amber);
+  color: #0a0a0c; font: 800 11px "Sora", sans-serif; }
+.setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 16px; margin-top: 18px; }
+.setup-card { border: 1px solid var(--line); border-radius: 18px; padding: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .02));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14); display: flex; flex-direction: column; gap: 12px; }
+.setup-card.is-ready { border-color: color-mix(in srgb, var(--green, #46d39a) 45%, transparent); }
+.setup-head { display: flex; align-items: flex-start; gap: 12px; }
+.setup-icon { font-size: 26px; line-height: 1; }
+.setup-title { flex: 1; min-width: 0; }
+.setup-title h3 { margin: 0 0 2px; font-size: 16px; }
+.setup-summary { margin: 0; }
+.setup-badge { flex: none; font: 700 11px "Inter", sans-serif; padding: 4px 10px;
+  border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.setup-badge.ok { color: #0a0a0c; background: #46d39a; border-color: transparent; }
+.setup-badge.warn-b { color: #0a0a0c; background: var(--amber); border-color: transparent; }
+.setup-badge.off { color: var(--muted); }
+.setup-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.setup-steps li { display: flex; gap: 9px; font-size: 13px; line-height: 1.45; color: var(--ink); }
+.setup-steps li.done { color: var(--muted); }
+.setup-steps .step-mark { flex: none; width: 18px; height: 18px; margin-top: 1px;
+  display: grid; place-items: center; border-radius: 50%; font-size: 11px; font-weight: 800;
+  border: 1px solid var(--line); color: var(--muted); }
+.setup-steps li.done .step-mark { background: #46d39a; color: #0a0a0c; border-color: transparent; }
+.setup-actions { border-top: 1px solid var(--line); padding-top: 12px; }
+.setup-actions .row { gap: 8px; flex-wrap: wrap; }
+.setup-note:empty { display: none; }
+@media (max-width: 560px) {
+  .setup-grid { grid-template-columns: 1fr; }
+}
+
 /* ---------- Histórico semanal de precios ---------- */
 .hist-row { cursor: pointer; transition: background .14s; }
 .hist-row:hover { background: rgba(255, 255, 255, .05); }

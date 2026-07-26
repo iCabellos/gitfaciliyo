@@ -64,7 +64,117 @@
       <button data-tab="tr"><span>📈</span> Trade Republic</button>
       <button data-tab="csgo"><span>🔫</span> CS:GO Skins</button>
       <button data-tab="magic"><span>🃏</span> Cartas Magic</button>
+      <button data-tab="config"><span>⚙️</span> Configuración <b class="tab-pill" id="setupPending" hidden></b></button>
     </nav>
+
+    <!-- CONFIGURACIÓN -->
+    <section class="panel glass tabpane" id="pane-config">
+      <div class="panel-head">
+        <div class="icon-chip">⚙️</div>
+        <div><h2>Configuración · conecta tus fuentes</h2>
+          <p class="sub2">Cuatro fuentes, cada una con sus pasos. Lo que ya está hecho sale
+             marcado; lo que falta, con lo que hay que hacer exactamente.</p></div>
+      </div>
+
+      <div class="m-statbar" id="setupEnv"></div>
+      <div id="setupEnvWarn"></div>
+
+      <div class="setup-grid">
+
+        <!-- 1 · BANCO -->
+        <article class="setup-card" id="card-imagin">
+          <div class="setup-head">
+            <span class="setup-icon">🏦</span>
+            <div class="setup-title"><h3>Banco · imagin (PSD2)</h3>
+              <p class="setup-summary hint">comprobando…</p></div>
+            <span class="setup-badge">…</span>
+          </div>
+          <ol class="setup-steps"></ol>
+          <div class="setup-missing"></div>
+          <div class="setup-actions">
+            <div class="row">
+              <button type="button" id="imaginAuthBtn">Autorizar en imagin</button>
+              <input type="text" id="imaginCode" placeholder="Pega aquí el «code» del retorno" />
+              <button type="button" id="imaginSessionBtn">Conectar</button>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <button type="button" class="m-chip" id="imaginRefreshBtn">↻ Traer saldo ahora</button>
+            </div>
+            <div id="imaginResult"></div>
+          </div>
+          <p class="setup-note hint"></p>
+        </article>
+
+        <!-- 2 · TRADE REPUBLIC -->
+        <article class="setup-card" id="card-trade_republic">
+          <div class="setup-head">
+            <span class="setup-icon">📈</span>
+            <div class="setup-title"><h3>Trade Republic</h3>
+              <p class="setup-summary hint">comprobando…</p></div>
+            <span class="setup-badge">…</span>
+          </div>
+          <ol class="setup-steps"></ol>
+          <div class="setup-missing"></div>
+          <div class="setup-actions">
+            <div class="row">
+              <input type="text" id="trPhone" placeholder="Teléfono (+34…)" />
+              <input type="password" id="trPin" placeholder="PIN" class="small" />
+              <button type="button" id="trPairBtn">Pedir código</button>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <input type="text" id="trCode" placeholder="Código recibido" class="small" />
+              <button type="button" id="trPairVerifyBtn">Emparejar</button>
+              <button type="button" class="m-chip" id="trLiveBtn">↻ Traer cartera ahora</button>
+              <button type="button" class="m-chip danger" id="trUnpairBtn">Desemparejar</button>
+            </div>
+            <div id="trApiResult"></div>
+          </div>
+          <p class="setup-note hint"></p>
+        </article>
+
+        <!-- 3 · STEAM -->
+        <article class="setup-card" id="card-steam">
+          <div class="setup-head">
+            <span class="setup-icon">🔫</span>
+            <div class="setup-title"><h3>Skins de CS:GO (Steam)</h3>
+              <p class="setup-summary hint">comprobando…</p></div>
+            <span class="setup-badge">…</span>
+          </div>
+          <ol class="setup-steps"></ol>
+          <div class="setup-missing"></div>
+          <div class="setup-actions">
+            <div class="row">
+              <input type="text" id="setupSteamId"
+                     placeholder="SteamID64 o la URL de tu perfil de Steam" />
+              <button type="button" id="setupSteamSave">Guardar</button>
+              <button type="button" class="m-chip" id="setupSteamCheck">✓ Comprobar inventario</button>
+            </div>
+            <div id="setupSteamResult"></div>
+          </div>
+          <p class="setup-note hint"></p>
+        </article>
+
+        <!-- 4 · CARTAS MAGIC -->
+        <article class="setup-card" id="card-magic">
+          <div class="setup-head">
+            <span class="setup-icon">🃏</span>
+            <div class="setup-title"><h3>Cartas Magic</h3>
+              <p class="setup-summary hint">comprobando…</p></div>
+            <span class="setup-badge">…</span>
+          </div>
+          <ol class="setup-steps"></ol>
+          <div class="setup-missing"></div>
+          <div class="setup-actions">
+            <div class="row">
+              <button type="button" data-goto="magic">Ir a mi lista de cartas</button>
+            </div>
+            <div id="setupMagicResult"></div>
+          </div>
+          <p class="setup-note hint"></p>
+        </article>
+
+      </div>
+    </section>
 
     <!-- HISTÓRICO SEMANAL DE PRECIOS -->
     <section class="panel glass tabpane" id="pane-historico">
@@ -150,21 +260,8 @@
         <button type="submit">Analizar</button>
       </form>
 
-      <details class="bulk" id="imaginBox" open>
-        <summary>🔗 Conectar imagin por API (PSD2 · Enable Banking) <span class="tag" id="imaginState">comprobando…</span></summary>
-        <p class="hint">Lee tu saldo y tus movimientos directamente del banco, sin subir PDF.
-           Autorizas una vez en la app de imagin (SCA) y el consentimiento vale ~90 días;
-           cuando caduque, el resumen semanal te avisará y bastará con volver a autorizar.
-           Requiere <code>ENABLE_BANKING_APP_ID</code>, la clave privada y
-           <code>ENABLE_BANKING_REDIRECT_URL</code> en el servidor.</p>
-        <div class="row">
-          <button type="button" id="imaginAuthBtn">1 · Autorizar en imagin</button>
-          <input type="text" id="imaginCode" placeholder="2 · Pega aquí el code del retorno" />
-          <button type="button" id="imaginSessionBtn">Conectar</button>
-          <button type="button" class="m-chip" id="imaginRefreshBtn">↻ Actualizar saldo ahora</button>
-        </div>
-        <div id="imaginResult"></div>
-      </details>
+      <p class="hint">¿Prefieres que el saldo entre solo, sin subir PDF? Conecta tu banco
+         en <a href="#" data-goto="config">⚙️ Configuración</a>.</p>
 
       <details class="bulk" id="wrBox">
         <summary>🔗 O conecta tu banco automáticamente (Wealth Reader)</summary>
@@ -188,25 +285,8 @@
         <div><h2>Trade Republic · acciones y ETFs</h2>
           <p class="sub2">Reconoce el «Extracto del patrimonio neto» en PDF. CSV: <code>name,isin,quantity,price,value</code>.</p></div>
       </div>
-      <details class="bulk" id="trApiBox" open>
-        <summary>🔗 Conectar Trade Republic por API <span class="tag" id="trApiState">comprobando…</span></summary>
-        <p class="hint">Lee tu cartera real (valores, títulos y efectivo) sin subir el extracto.
-           Se empareja el dispositivo UNA vez con tu teléfono, tu PIN y el código que te manda
-           Trade Republic; después el resumen semanal se actualiza solo. Es una API no oficial:
-           si TR cambia el protocolo, verás el fallo y siempre queda la subida por PDF/CSV.</p>
-        <div class="row">
-          <input type="text" id="trPhone" placeholder="Teléfono (+34…)" />
-          <input type="password" id="trPin" placeholder="PIN" class="small" />
-          <button type="button" id="trPairBtn">1 · Pedir código</button>
-          <input type="text" id="trCode" placeholder="2 · Código recibido" class="small" />
-          <button type="button" id="trPairVerifyBtn">Emparejar</button>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <button type="button" id="trLiveBtn">↻ Traer mi cartera ahora</button>
-          <button type="button" class="m-chip danger" id="trUnpairBtn">Desemparejar</button>
-        </div>
-        <div id="trApiResult"></div>
-      </details>
+      <p class="hint">¿Prefieres que la cartera entre sola, sin subir el extracto? Empareja
+         Trade Republic en <a href="#" data-goto="config">⚙️ Configuración</a>.</p>
 
       <form class="row" data-upload="/api/trade-republic" data-field="file" data-target="trResult">
         <label class="filebox"><input type="file" accept=".pdf,.csv" hidden>
@@ -295,6 +375,7 @@
   <script src="{{ url_for('static', filename='charts.js') }}"></script>
   <script src="{{ url_for('static', filename='history.js') }}"></script>
   <script src="{{ url_for('static', filename='connect.js') }}"></script>
+  <script src="{{ url_for('static', filename='setup.js') }}"></script>
   <script src="{{ url_for('static', filename='anim.js') }}"></script>
 </body>
 </html>
