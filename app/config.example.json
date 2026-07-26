@@ -1,8 +1,8 @@
 {
-  "_comment": "Copia este archivo a config.json y rellena tus datos. config.json está en .gitignore.",
+  "_comment": "PLANTILLA. Copia este archivo a config.json y pon TUS datos. config.json está en .gitignore y es el único que lee la app: este fichero NUNCA se usa como respaldo.",
   "currency": "eur",
   "steam": {
-    "steamid64": "76561198110817711",
+    "steamid64": "TU_STEAMID64",
     "_note": "Tu inventario de Steam debe estar en PÚBLICO (Privacidad → Detalles del juego = Público)."
   },
   "moxfield": {
