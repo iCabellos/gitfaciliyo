@@ -6,6 +6,11 @@ documento recoge las vías REALES disponibles a fecha 2026-07, con sus
 requisitos y riesgos. Nada de lo de abajo está inventado: cada opción enlaza a
 su documentación.
 
+> **Estado: implementado.** Las dos vías recomendadas ya están en el código
+> (`sources/enablebanking.py` y `sources/trade_republic_live.py`), enganchadas a
+> `revalue.refresh_live()` y con su UI en la web. Lo único que falta es dar de
+> alta las credenciales en el servidor (ver `.env.example`).
+
 ---
 
 ## 1. imagin (CaixaBank)
@@ -34,17 +39,21 @@ Por qué encaja aquí:
   El consentimiento PSD2 caduca (90/180 días según banco) y hay que renovarlo
   repitiendo la autorización — es una limitación regulatoria, no del agregador.
 
-Plan de integración (siguiente PR):
-1. Registrar app en Enable Banking (modo restricted production) y guardar
-   `EB_APP_ID` + clave privada como secretos del servidor.
-2. Nuevo `sources/enablebanking.py`: crear sesión → listar cuentas → traer
-   `balances` y `transactions`, mapear al formato de `bank.analyze_raw()`
-   (igual que hace `wealthreader.py`) y persistir con
-   `ingest.persist_bank_aggregates()`.
-3. Añadir «Liquidez (banco)» a la revalorización semanal (`sources/revalue.py`).
-   Si el consentimiento ha caducado, el resumen de WhatsApp lo dirá en un
-   aviso ⚠️ (fallo visible, sin arrastrar el saldo viejo en silencio) y la web
-   ofrecerá el botón de renovar.
+Integración (hecha):
+1. Registra la app en Enable Banking (modo restricted production) y define
+   `ENABLE_BANKING_APP_ID`, `ENABLE_BANKING_PRIVATE_KEY` (PEM o su base64, o
+   bien `ENABLE_BANKING_KEY_PATH`) y `ENABLE_BANKING_REDIRECT_URL`.
+2. `sources/enablebanking.py`: JWT RS256 con el `kid` de la aplicación →
+   `POST /auth` (URL de SCA) → `POST /sessions` (sesión reutilizable) →
+   `GET /accounts/{uid}/balances` y `/transactions` (con paginación por
+   `continuation_key`). Los movimientos se mapean al formato de
+   `bank.analyze_raw()` y se persisten con `ingest.persist_bank_aggregates()`.
+3. «Liquidez (banco)» entra en `revalue.refresh_live()`. Si el consentimiento ha
+   caducado, el error real sube hasta el resumen de WhatsApp como ⚠️ (sin
+   arrastrar el saldo viejo en silencio) y la web permite volver a autorizar.
+
+Rutas: `GET /api/imagin/status`, `POST /api/imagin/auth`,
+`POST /api/imagin/session`, `POST /api/imagin/refresh`.
 
 ### 1c. Wealth Reader — ya integrada, requiere API key comercial
 El repo ya tiene `sources/wealthreader.py` y `POST /api/wealthreader`
@@ -79,16 +88,28 @@ nuevas** y está en proceso de cierre. No empezar nada nuevo sobre ella.
   `tr-api` (<https://github.com/cdamken/tr-api>, login con Playwright o
   importación de cookies) y `pytrpp` para exportar movimientos.
 
-Plan de integración (siguiente PR):
-1. `sources/trade_republic_live.py` con `pytr`: login con credenciales en
-   variables de entorno (`TR_PHONE`, `TR_PIN`) y el fichero de pairing en el
-   disco persistente del servidor; suscripción a `portfolio` + `cash` y suma
-   en EUR.
-2. Guardar snapshot «Acciones / ETFs» del mes en curso y engancharlo a
-   `revalue.refresh_live()` como tercera categoría.
+Integración (hecha):
+1. `sources/trade_republic_live.py` implementa el protocolo directamente (sin
+   depender del paquete `pytr`, para no arrastrar sus dependencias):
+   * **Emparejado**, una sola vez: `POST /auth/account/reset/device` →
+     código por SMS → `POST /auth/account/reset/device/{processId}/key` con la
+     clave pública de un par EC P-256. La privada queda en el ajuste
+     `tr_device_key` de la base de datos.
+   * **Login** automático: se firma `{timestamp}.{cuerpo}` con esa clave
+     (`X-Zeta-Timestamp` + `X-Zeta-Signature`) y se obtiene el `sessionToken`.
+     Por eso el resumen semanal no vuelve a pedir ningún código.
+   * **Cartera**: websocket `wss://api.traderepublic.com/` con
+     `compactPortfolio` (ISIN + títulos), `instrument` (nombre y bolsa),
+     `ticker` (precio) y `cash` (efectivo).
+2. «Acciones / ETFs» entra en `revalue.refresh_live()`, guarda el snapshot del
+   mes y además el **registro de posiciones** (nombre y nº de títulos) en la
+   tabla `holdings`.
 3. Si el login caduca o TR rompe el protocolo: error visible en el WhatsApp
-   semanal, y siempre queda la ingesta actual por PDF/CSV
+   semanal, y siempre queda la ingesta por PDF/CSV
    (`sources/trade_republic.py`), que sigue siendo el camino manual soportado.
+
+Rutas: `GET /api/trade-republic/status`, `POST /api/trade-republic/pair`,
+`POST /api/trade-republic/pair/verify`, `POST /api/trade-republic/live`.
 
 ### 2b. Mantener PDF/CSV (estado actual)
 Cero riesgo y ya funciona, pero exige subir el extracto a mano: es
@@ -101,11 +122,11 @@ mantiene como camino manual, no como sustituto de 2a.
 
 | Fuente | Vía | Coste | Riesgo | Estado |
 |---|---|---|---|---|
-| imagin | Enable Banking (restricted prod) | 0 € (cuentas propias) | Bajo (agregador regulado; renovar consentimiento cada 90/180 días) | Propuesto |
+| imagin | Enable Banking (restricted prod) | 0 € (cuentas propias) | Bajo (agregador regulado; renovar consentimiento cada 90/180 días) | **Implementado** (falta dar de alta las credenciales) |
 | imagin | Wealth Reader | API key comercial | Bajo | Integrado, sin key |
-| Trade Republic | pytr / tr-api (websocket no oficial) | 0 € | Medio-alto (no oficial, ToS, WAF) | Propuesto |
+| Trade Republic | websocket no oficial (protocolo de su app) | 0 € | Medio-alto (no oficial, ToS, WAF) | **Implementado** (falta emparejar el dispositivo) |
 | Trade Republic | PDF/CSV manual | 0 € | Ninguno | Funciona hoy |
 
-Orden sugerido: primero Enable Banking (estable y regulado), después
-Trade Republic con `pytr` asumiendo su fragilidad (con fallo visible cuando se
-rompa, nunca datos antiguos disfrazados de nuevos).
+Las dos vías por API asumen su fragilidad: cuando se rompan, el fallo se ve en
+el WhatsApp semanal y la vía manual sigue disponible. Nunca se muestran datos
+antiguos disfrazados de nuevos.

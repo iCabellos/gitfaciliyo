@@ -4,8 +4,8 @@ Una sola app para controlar **todas tus inversiones y gastos**:
 
 | Fuente | Cómo entra | Estado |
 |---|---|---|
-| 🏦 **Banco** | Subes el PDF del extracto | Gastos **netos** por categoría |
-| 📈 **Trade Republic** | Subes el informe mensual (PDF o CSV) | Acciones / ETFs |
+| 🏦 **imagin / CaixaBank** | **API PSD2** (Enable Banking) o PDF del extracto | Saldo y gastos **netos** por categoría |
+| 📈 **Trade Republic** | **API de la propia app** (dispositivo emparejado) o PDF/CSV | Acciones / ETFs con nombre y nº de títulos |
 | 🪙 **Nexo** | Subes el informe/balances (CSV o PDF) | Cripto |
 | 🔫 **CS:GO** | Conecta con tu **Steam Inventory** | Skins valoradas con el Steam Market (en vivo) |
 | 🃏 **Magic** | Mazo de **Moxfield** o decklist pegada | Precio **en tiempo real** con Scryfall |
@@ -18,9 +18,16 @@ Además incluye:
   apiladas del **patrimonio mensual** (según la fecha de cada documento) con línea
   de total, y mini-gráficas de evolución por categoría. El histórico se guarda en
   `data/snapshots.json`.
-- 📈 **Seguimiento diario de precios** de tus cartas y skins (Scryfall + Steam
-  Market/CSFloat) y 📲 **alerta semanal por WhatsApp** de lo que haya subido >10%
-  algún día de la semana. Ver **[DEPLOY.md](DEPLOY.md)**.
+- 🕒 **Histórico semanal de precios**, carta a carta y skin a skin: el precio de
+  cierre de cada semana, consultable en la pestaña «Histórico semanal» con su
+  serie completa y la variación respecto a la semana anterior.
+- 📲 **Resumen semanal por WhatsApp** con el patrimonio, su variación y **todo lo
+  que se haya movido un ±5%** (nombre del elemento, precio anterior → precio
+  actual). Si una fuente no está conectada o falla, sale un ⚠️ en el propio
+  mensaje: nunca se repite una cifra vieja como si fuera nueva.
+- 📄 **Registro de valores**: qué acciones/ETFs tienes y **cuántos títulos** de
+  cada uno, mes a mes.
+Ver **[DEPLOY.md](DEPLOY.md)** y **[BANCOS_API.md](BANCOS_API.md)**.
 
 ## Ejecutar
 
@@ -33,12 +40,24 @@ python app.py            # http://127.0.0.1:5000
 (Opcional) Copia `config.example.json` a `config.json` y pon tu SteamID64 y tu
 mazo de Moxfield por defecto. `config.json` está en `.gitignore`.
 
-## Cada mes
+## Conectar las fuentes por API (una sola vez)
 
-1. **Banco / Trade Republic / Nexo** → subes los informes del mes en sus pestañas.
-2. **CS:GO** → pulsas «Conectar inventario» (tu inventario de Steam debe estar en
-   **público**); se valoran las skins con el Steam Market.
-3. **Magic** → pegas la decklist (o la URL del mazo) y se piden los precios a Scryfall.
+Con esto el resumen semanal se actualiza solo, sin subir nada a mano:
+
+1. **imagin** → pestaña *Banco*, «Conectar imagin por API». Pulsa *Autorizar*,
+   autoriza en la app de imagin (SCA) y pega el `code` del retorno. El
+   consentimiento PSD2 dura ~90 días; al caducar te avisa el propio WhatsApp.
+2. **Trade Republic** → pestaña *Trade Republic*, «Conectar por API». Teléfono +
+   PIN → llega un código → *Emparejar*. El dispositivo queda autorizado y a
+   partir de ahí no hace falta ningún código más.
+3. **CS:GO** → «Conectar inventario» con tu SteamID64 (inventario en **público**).
+4. **Magic** → pegas la decklist (o la URL del mazo); queda guardada.
+
+Requisitos de servidor para 1 y 2 (ver `.env.example`): `ENABLE_BANKING_APP_ID`,
+la clave privada de la app, `ENABLE_BANKING_REDIRECT_URL`, `TR_PHONE` y `TR_PIN`.
+
+La vía manual (subir el PDF/CSV del banco o de Trade Republic) sigue funcionando
+igual y es el respaldo cuando una API falla.
 
 ## Reglas del banco (gasto neto)
 
@@ -61,15 +80,20 @@ app/
     http.py              # cliente HTTP stdlib que respeta el proxy y su CA
     bank.py              # extracto del banco -> gasto neto + enlace de bizums
     trade_republic.py    # informe TR (PDF/CSV) -> acciones/ETFs
-    nexo.py              # informe Nexo (CSV/PDF) -> cripto
+    trade_republic_live.py # API real de TR: emparejado + cartera por websocket
+    enablebanking.py     # imagin/CaixaBank por PSD2 (Enable Banking)
     steam.py             # Steam Inventory + Steam Market -> skins CS:GO
     moxfield.py          # Moxfield/decklist + precios Scryfall en vivo -> cartas Magic
+    prices.py            # histórico de precios: diario, serie semanal y movimientos ±5%
+    patrimonio.py        # resumen del patrimonio y mensaje de WhatsApp
+    revalue.py           # revalorización en vivo de las 4 fuentes
+    db.py                # snapshots, caché, histórico de precios y registro de valores
   jobs/
     track_prices.py      # seguimiento DIARIO de precios (cartas + skins)
-    weekly_whatsapp.py   # alerta SEMANAL por WhatsApp de subidas >10%
+    weekly_whatsapp.py   # alerta de precios ±5% por WhatsApp (disparo manual)
     scheduler.py         # programador en proceso (APScheduler) para producción
   templates/index.html   # panel con pestañas
-  static/                # app.js, charts.js, anim.js, styles.css, vendor/
+  static/                # app.js, charts.js, history.js, connect.js, anim.js, styles.css
   Dockerfile · Procfile · render.yaml · .env.example · DEPLOY.md   # despliegue
 ```
 
@@ -110,3 +134,13 @@ BTC,0.05,3120.00
 - **Moxfield**: su API suele bloquear el acceso automático (Cloudflare). Por eso la
   vía recomendada es **pegar la decklist** exportada; igualmente se intenta la API
   si das una URL/ID de mazo.
+- **Enable Banking (imagin)**: agregador PSD2 regulado. El modo *restricted
+  production* es gratuito para leer tus propias cuentas. La app firma cada
+  llamada con un JWT RS256 (`PyJWT[crypto]`).
+- **Trade Republic**: API **no oficial**, la misma que usa su app (login firmado
+  con la clave del dispositivo + websocket `compactPortfolio`/`cash`/`ticker`).
+  Puede romperse si TR cambia el protocolo; cuando pase, el fallo se ve en el
+  WhatsApp semanal y queda la subida manual de PDF/CSV.
+- **Histórico de precios**: se guarda por duplicado en
+  `data/price_history.json` (commiteado por GitHub Actions) y en la tabla
+  `price_history` de la base de datos (lo que lee la web).

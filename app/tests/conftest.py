@@ -29,7 +29,9 @@ def client():
     """Cliente de pruebas de Flask con la base de datos limpia."""
     import app as app_module
     db.reset_snapshots()
+    db.reset_holdings()
     app_module.app.config["TESTING"] = True
     with app_module.app.test_client() as c:
         yield c
     db.reset_snapshots()
+    db.reset_holdings()

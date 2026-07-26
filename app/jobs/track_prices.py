@@ -2,8 +2,9 @@
 Seguimiento DIARIO de precios de cartas Magic y skins de CS:GO.
 
 Ejecuta una vez al día (cron). Construye la watchlist a partir de lo que
-REALMENTE tienes y guarda los precios en data/price_history.json, una entrada
-por día:
+REALMENTE tienes y guarda los precios en data/price_history.json Y en la tabla
+`price_history` de la base de datos (para que la web los pueda consultar), una
+entrada por día:
 
     { "2026-06-26": { "card:Sol Ring": 3.85, "skin:AK-47 | Redline (Field-Tested)": 37.5 } }
 
@@ -13,9 +14,11 @@ por día:
               Se siguen SOLO las skins vendibles que de verdad tienes.
   3. Cartas -> tu lista guardada de Magic (setting `magic_cards`, si hay DB).
 
-Si no hay nada configurado, NO se sigue nada (así el aviso semanal nunca
-alerta de skins/cartas que no son tuyas). El fichero watchlist.example.json es
-solo un ejemplo y NUNCA se usa como fuente real.
+Si no hay nada configurado NO se sigue nada, pero el trabajo FALLA con un error
+claro en vez de terminar en silencio: un histórico que deja de crecer sin avisar
+es justo lo que hace que el resumen semanal repita las mismas cifras durante
+semanas. El fichero watchlist.example.json es solo un ejemplo y NUNCA se usa
+como fuente real.
 
 Fuentes de precio:
   * Cartas Magic  -> Scryfall (actualiza precios a diario; EUR preferente, USD si no hay).
@@ -31,10 +34,10 @@ import time
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 
-from sources import moxfield, steam, http  # noqa: E402
+from sources import moxfield, steam, http, prices  # noqa: E402
 
-DATA_DIR = os.environ.get("PATRIMONIO_DATA_DIR") or os.path.join(HERE, "data")
-HISTORY = os.path.join(DATA_DIR, "price_history.json")
+DATA_DIR = prices.DATA_DIR
+HISTORY = prices.HISTORY_FILE
 
 
 def _read(path, default):
@@ -43,12 +46,6 @@ def _read(path, default):
             return json.load(fh)
     except (OSError, ValueError):
         return default
-
-
-def _write(path, obj):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as fh:
-        json.dump(obj, fh, indent=2, ensure_ascii=False)
 
 
 # --------------------------------------------------------------------------
@@ -150,10 +147,10 @@ def card_prices(names):
     if not names:
         return {}
     cards = [_card_from_entry(n) for n in names]
-    prices, _ = moxfield.price_cards(cards)
+    scryfall, _ = moxfield.price_cards(cards)
     out = {}
     for n, c in zip(names, cards):
-        pr = prices.get(moxfield._ident_key(c), {})
+        pr = scryfall.get(moxfield._ident_key(c), {})
         unit, _cur = moxfield._pick_price(pr, bool(c.get("foil")))
         if unit is not None:
             out["card:" + (_entry_name(n) or c["name"])] = round(unit, 2)
@@ -196,23 +193,38 @@ def skin_prices(names):
     return out
 
 
+NOTHING_TO_TRACK = (
+    "Nada que seguir: el histórico de precios no puede crecer.\n"
+    "  · Skins  -> define STEAM_ID64 (o abre una vez la web con tu SteamID64) "
+    "y deja el inventario de Steam en público.\n"
+    "  · Cartas -> guarda tu lista de Magic en la web (necesita DATABASE_URL "
+    "para leerla desde el cron).")
+
+
 def main():
+    """Registra los precios de hoy. Falla (excepción) si no hay nada que seguir."""
     wl = load_watchlist()
     print(f"Watchlist: {len(wl['cards'])} cartas, {len(wl['skins'])} skins")
     if not wl["cards"] and not wl["skins"]:
-        print("Nada que seguir: conecta tu inventario de Steam (STEAM_ID64) "
-              "y/o guarda tu lista de Magic. No se registra nada.")
-        return {}
+        raise RuntimeError(NOTHING_TO_TRACK)
     today = datetime.date.today().isoformat()
-    prices = {}
-    prices.update(card_prices(wl["cards"]))
-    prices.update(skin_prices(wl["skins"]))
-    history = _read(HISTORY, {})
-    history[today] = prices
-    _write(HISTORY, history)
-    print(f"[{today}] guardados {len(prices)} precios en {HISTORY}")
-    return prices
+    day_prices = {}
+    day_prices.update(card_prices(wl["cards"]))
+    day_prices.update(skin_prices(wl["skins"]))
+    if not day_prices:
+        raise RuntimeError(
+            f"Ninguna de las {len(wl['cards'])} cartas y {len(wl['skins'])} skins "
+            "de la watchlist devolvió precio (Scryfall/Steam Market). No se "
+            "registra un día vacío.")
+    to_file, to_db = prices.record(today, day_prices)
+    print(f"[{today}] {to_file} precios en {HISTORY}"
+          + (f" y {to_db} en la base de datos" if to_db else " (sin base de datos)"))
+    return day_prices
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except RuntimeError as exc:
+        print(f"\n❌ {exc}")
+        raise SystemExit(1)

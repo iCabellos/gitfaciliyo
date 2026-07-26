@@ -1,7 +1,11 @@
 name: Precios diarios (cartas + skins)
 
 # Seguimiento DIARIO de precios. Gratis, sin servidor. Guarda el histórico
-# commiteándolo en el propio repo (app/data/price_history.json).
+# commiteándolo en el propio repo (app/data/price_history.json) Y en la base de
+# datos (DATABASE_URL), que es de donde lo lee la web y el resumen semanal.
+#
+# Si no hay nada que seguir el trabajo FALLA a propósito: un histórico que deja
+# de crecer en silencio es lo que hace que el resumen semanal repita cifras.
 on:
   schedule:
     - cron: "7 6 * * *"      # 06:07 UTC ≈ 08:07 Europe/Madrid

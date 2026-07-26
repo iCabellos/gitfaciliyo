@@ -63,18 +63,65 @@ def eur(n):
     return f"{n:,.2f} €".replace(",", "\x00").replace(".", ",").replace("\x00", ".")
 
 
-def whatsapp_message(s, warnings=None):
+def qty(n):
+    """Cantidad de títulos: sin decimales si es entera, hasta 4 si es fraccionada."""
+    n = round(float(n), 4)
+    text = f"{n:,.0f}" if n == int(n) else f"{n:,.4f}".rstrip("0").rstrip(".")
+    return text.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+
+
+def pct(n):
+    """Porcentaje con signo y coma decimal: '+10,0%' / '-12,0%'."""
+    return f"{n:+.1f}%".replace(".", ",")
+
+
+# Cuántos movimientos caben en el mensaje antes de resumir el resto.
+MOVERS_LIMIT = 12
+
+
+def movers_lines(movers, threshold=5.0, limit=MOVERS_LIMIT):
+    """Bloque de movimientos de precio de la semana (subidas Y bajadas).
+
+    Cada línea lleva el elemento, su precio ANTERIOR y el ACTUAL, y el
+    porcentaje. Lista vacía -> se dice que nada superó el umbral (que también
+    es información: confirma que el seguimiento está vivo).
+    """
+    header = f"📊 *Movimientos ≥{threshold:g}% esta semana*"
+    if not movers:
+        return [f"{header}\nNinguna carta ni skin se movió más de un {threshold:g}%."]
+    icons = {"card": "🃏", "skin": "🔫"}
+    days = movers[0].get("days")
+    span = f" (últimos {days} días)" if days else ""
+    lines = [header + span]
+    for m in movers[:limit]:
+        arrow = "🔺" if m["direction"] == "up" else "🔻"
+        icon = icons.get(m["kind"], "•")
+        lines.append(f"{icon} {m['name']}\n"
+                     f"   {arrow} {eur(m['price_from'])} → {eur(m['price_to'])} "
+                     f"({pct(m['pct'])})")
+    if len(movers) > limit:
+        lines.append(f"…y {len(movers) - limit} más (consúltalos en la web).")
+    return lines
+
+
+def whatsapp_message(s, warnings=None, movers=None, threshold=5.0, holdings=None):
     """Construye el mensaje de WhatsApp del resumen de patrimonio.
 
     Las categorías cuyo dato no es del mes en curso se marcan con su mes de
-    origen, y los avisos (p. ej. una fuente que falló al revalorizar) se añaden
-    al final: mejor un fallo visible que un número que parece fresco sin serlo.
+    origen, y los avisos (p. ej. una fuente que falló al revalorizar o que no
+    está conectada) se añaden al final: mejor un fallo visible que un número que
+    parece fresco sin serlo.
+
+    `movers` (de `prices.movers`) añade el detalle de qué carta/skin se ha
+    movido y entre qué precios; con None no se incluye la sección.
+    `holdings` son las posiciones guardadas (acciones/ETFs) para resumir cuántos
+    títulos hay registrados.
     """
     lines = [f"💼 *Tu patrimonio* ({s['month']})", "", f"Total: *{eur(s['total'])}*"]
     if s["pct"] is not None:
         arrow = "📈" if s["delta"] >= 0 else "📉"
         sign = "+" if s["delta"] >= 0 else ""
-        lines.append(f"{arrow} {sign}{eur(s['delta'])} ({s['pct']:+.1f}%) vs periodo anterior")
+        lines.append(f"{arrow} {sign}{eur(s['delta'])} ({pct(s['pct'])}) vs periodo anterior")
     cat_months = s.get("category_months") or {}
     for k, v in sorted(s["categories"].items(), key=lambda x: -x[1]):
         m = cat_months.get(k)
@@ -82,6 +129,13 @@ def whatsapp_message(s, warnings=None):
         lines.append(f"• {k}: {eur(v)}{stale}")
     if s.get("ganancias") is not None:
         lines.append(f"\n🟢 Ingresos: {eur(s['ganancias'])}   🔴 Gastos: {eur(s.get('gastos') or 0)}")
+    if holdings:
+        titles = sum(h.get("quantity") or 0 for h in holdings)
+        lines.append(f"\n📄 Acciones/ETFs: {len(holdings)} valores · "
+                     f"{qty(titles)} títulos")
+    if movers is not None:
+        lines.append("")
+        lines.extend(movers_lines(movers, threshold))
     for w in warnings or []:
         lines.append(f"\n⚠️ {w}")
     lines.append("\nMi patrimonio · resumen automático")

@@ -1,81 +1,72 @@
 """
-Alerta SEMANAL por WhatsApp: cartas/skins que han subido >10% algún día de la semana.
+Alerta SEMANAL por WhatsApp: cartas/skins que se han movido ≥5% en la semana.
 
-Ejecuta una vez por semana (cron). Lee data/price_history.json, calcula la
-variación día a día de los últimos 7 días y avisa de los artículos cuya subida
-diaria máxima superó el umbral (10% por defecto).
+Ejecuta una vez por semana (cron). Compara el precio de hoy con el de hace una
+semana (histórico de `sources/prices.py`) y avisa de todo lo que se haya movido
+al menos el umbral, EN LOS DOS SENTIDOS: sube y baja interesan igual. Cada línea
+lleva el elemento, su precio anterior y el actual.
 
-Envío por Twilio WhatsApp (si hay credenciales en variables de entorno); si no,
-imprime el mensaje (modo simulación) para que puedas probar sin enviar nada.
+Envío por CallMeBot (gratis) o Twilio; si no hay credenciales, imprime el
+mensaje (modo simulación) para poder probar sin enviar nada.
 
 Variables de entorno necesarias para enviar de verdad:
-    TWILIO_ACCOUNT_SID       SID de la cuenta de Twilio
-    TWILIO_AUTH_TOKEN        token de autenticación
-    TWILIO_WHATSAPP_FROM     remitente, p. ej. 'whatsapp:+14155238886' (sandbox)
-    ALERT_WHATSAPP_TO        destino, p. ej. 'whatsapp:+34640253466'
+    CALLMEBOT_APIKEY / CALLMEBOT_PHONE      vía gratuita recomendada
+    TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN  alternativa
+    TWILIO_WHATSAPP_FROM / ALERT_WHATSAPP_TO
 Opcional:
-    ALERT_THRESHOLD          umbral en % (por defecto 10)
+    ALERT_THRESHOLD          umbral en % (por defecto 5)
 """
 
 import base64
 import datetime
-import json
 import os
 import sys
 import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.environ.get("PATRIMONIO_DATA_DIR") or os.path.join(HERE, "data")
-HISTORY = os.path.join(DATA_DIR, "price_history.json")
-THRESHOLD = float(os.environ.get("ALERT_THRESHOLD", "10"))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from sources import prices, patrimonio  # noqa: E402
+
+DATA_DIR = prices.DATA_DIR
+HISTORY = prices.HISTORY_FILE
+THRESHOLD = prices.THRESHOLD
 
 
-def _read(path, default):
-    try:
-        with open(path) as fh:
-            return json.load(fh)
-    except (OSError, ValueError):
-        return default
+def weekly_movers(history=None, threshold=THRESHOLD, days=prices.WINDOW_DAYS):
+    """Elementos que se han movido ≥ umbral en la semana (subidas y bajadas)."""
+    return prices.movers(prices.history() if history is None else history,
+                         threshold=threshold, window=days)
 
 
-def weekly_gainers(history, threshold=THRESHOLD, days=7):
-    """Artículos con una subida diaria > umbral en los últimos `days` días.
-
-    Devuelve [{key, name, kind, pct, day, price_from, price_to}] ordenado desc.
-    """
-    dates = sorted(history.keys())
-    if len(dates) < 2:
-        return []
-    window = dates[-(days + 1):]          # incluye el día previo para comparar
-    gainers = {}
-    for prev, cur in zip(window, window[1:]):
-        a, b = history.get(prev, {}), history.get(cur, {})
-        for key, price in b.items():
-            old = a.get(key)
-            if not old or old <= 0 or price is None:
-                continue
-            pct = (price - old) / old * 100
-            if pct > threshold and pct > gainers.get(key, {"pct": 0})["pct"]:
-                kind, _, name = key.partition(":")
-                gainers[key] = {"key": key, "name": name, "kind": kind,
-                                "pct": pct, "day": cur, "price_from": old, "price_to": price}
-    return sorted(gainers.values(), key=lambda g: -g["pct"])
-
-
-def compose_message(gainers, threshold=THRESHOLD):
+def compose_message(movers, threshold=THRESHOLD, coverage=None):
+    """Mensaje de la alerta. Si el histórico está vacío o parado, lo dice."""
     today = datetime.date.today().strftime("%d/%m/%Y")
-    if not gainers:
-        return f"📊 Resumen semanal ({today}): ninguna carta o skin subió más del {threshold:.0f}% esta semana."
-    lines = [f"📈 *Subidas >{threshold:.0f}% esta semana* ({today})", ""]
-    icon = {"card": "🃏", "skin": "🔫"}
-    for g in gainers:
-        lines.append(f"{icon.get(g['kind'], '•')} {g['name']}\n"
-                     f"   +{g['pct']:.1f}% el {g['day']}  "
-                     f"(€{g['price_from']:.2f} → €{g['price_to']:.2f})")
+    lines = [f"📊 *Precios de la semana* ({today})", ""]
+    lines.extend(patrimonio.movers_lines(movers, threshold))
+    for warning in coverage_warnings(coverage or {}):
+        lines.append(f"\n⚠️ {warning}")
     lines.append("")
     lines.append("Mi patrimonio · alerta automática")
     return "\n".join(lines)
+
+
+def coverage_warnings(cov):
+    """Avisos cuando el seguimiento diario no está registrando precios.
+
+    Un histórico vacío o congelado es la causa de que el resumen repita cifras;
+    debe verse en el mensaje, no quedarse en los logs del cron.
+    """
+    if not cov or not cov.get("days"):
+        return ["Sin histórico de precios: el seguimiento diario no está "
+                "registrando nada (revisa STEAM_ID64 y tu lista de Magic)."]
+    stale = cov.get("stale_days")
+    if stale is not None and stale > 2:
+        return [f"El último precio registrado es del {cov['last_day']} "
+                f"(hace {stale} días): el seguimiento diario está parado."]
+    return []
 
 
 def send_whatsapp(body):
@@ -117,14 +108,18 @@ def send_whatsapp(body):
 
 
 def main():
-    history = _read(HISTORY, {})
-    gainers = weekly_gainers(history)
-    # Por defecto no se envía si no hay subidas (evita ruido). ALERT_SEND_EMPTY=1 lo fuerza.
-    if not gainers and os.environ.get("ALERT_SEND_EMPTY", "0") != "1":
-        print("Sin subidas >umbral esta semana; no se envía WhatsApp.")
-        return gainers
-    send_whatsapp(compose_message(gainers))
-    return gainers
+    history = prices.history()
+    cov = prices.coverage(history)
+    movers = weekly_movers(history)
+    warnings = coverage_warnings(cov)
+    # Sin movimientos ni avisos no se envía nada (evita ruido); ALERT_SEND_EMPTY=1
+    # lo fuerza. Un aviso de seguimiento parado SÍ se envía siempre: es el caso
+    # en el que callar significaría repetir cifras viejas sin explicación.
+    if not movers and not warnings and os.environ.get("ALERT_SEND_EMPTY", "0") != "1":
+        print(f"Sin movimientos ≥{THRESHOLD:g}% esta semana; no se envía WhatsApp.")
+        return movers
+    send_whatsapp(compose_message(movers, THRESHOLD, cov))
+    return movers
 
 
 if __name__ == "__main__":

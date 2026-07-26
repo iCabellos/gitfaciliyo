@@ -4,4 +4,6 @@ gunicorn>=21.2          # servidor WSGI para producción
 APScheduler>=3.10       # programador en proceso (precios diarios + WhatsApp semanal)
 SQLAlchemy>=2.0         # capa de base de datos (snapshots + caché diaria)
 psycopg2-binary>=2.9    # driver PostgreSQL (producción; en local se usa SQLite)
+PyJWT[crypto]>=2.8      # JWT RS256 firmado para la API de Enable Banking (imagin)
+websocket-client>=1.7   # websocket de Trade Republic (cartera en vivo)
 # Las llamadas HTTP (Steam, Scryfall, Twilio) usan la librería estándar; sin más dependencias.

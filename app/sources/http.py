@@ -51,6 +51,30 @@ def request(url, method="GET", data=None, headers=None, timeout=25):
     return status, raw.decode("utf-8", "replace")
 
 
+def request_raw(url, method="POST", body=b"", headers=None, timeout=25):
+    """Petición con el cuerpo EXACTO en bytes; devuelve (status, texto, cabeceras).
+
+    Necesario cuando el cuerpo va firmado (Trade Republic firma la cadena
+    `timestamp.json`): serializar de nuevo aquí rompería la firma. Las cabeceras
+    de respuesta hacen falta para leer cookies y tokens de sesión.
+    """
+    hdrs = dict(DEFAULT_HEADERS)
+    if headers:
+        hdrs.update(headers)
+    req = urllib.request.Request(url, data=body or None, headers=hdrs, method=method)
+    try:
+        resp = urllib.request.urlopen(req, timeout=timeout, context=_CTX)
+        status, raw, out_headers = getattr(resp, "status", 200), resp.read(), resp.headers
+    except urllib.error.HTTPError as e:
+        status, raw, out_headers = e.code, e.read(), e.headers
+    if out_headers and "gzip" in (out_headers.get("Content-Encoding", "") or ""):
+        try:
+            raw = gzip.decompress(raw)
+        except OSError:
+            pass
+    return status, raw.decode("utf-8", "replace"), out_headers
+
+
 def _maybe_json(raw):
     if not raw:
         return None
