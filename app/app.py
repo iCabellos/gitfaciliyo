@@ -69,21 +69,26 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
 _HERE = os.path.dirname(__file__)
-_CONFIG_PATHS = (os.path.join(_HERE, "config.json"), os.path.join(_HERE, "config.example.json"))
+CONFIG_PATH = os.path.join(_HERE, "config.json")
 
 
 # ---------------------------------------------------------------------------
 # Utilidades
 # ---------------------------------------------------------------------------
 def load_config():
-    """Lee config.json; si no existe, usa config.example.json como respaldo."""
-    for path in _CONFIG_PATHS:
-        try:
-            with open(path) as fh:
-                return json.load(fh)
-        except (OSError, ValueError):
-            continue
-    return {}
+    """Lee TU config.json. Si no existe, no hay configuración: {}.
+
+    NUNCA cae en config.example.json. Ese fichero es una plantilla y está en el
+    repo; usarlo como respaldo hacía que la web propusiera —y valorara— un
+    inventario de Steam que no es el tuyo, y que ese id acabara guardado como si
+    lo hubieras elegido. Sin config.json, cada fuente pide su dato y falla a la
+    vista si no se lo das.
+    """
+    try:
+        with open(CONFIG_PATH) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
 
 
 def api_error(status=502):

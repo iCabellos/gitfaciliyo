@@ -1,5 +1,8 @@
 """Rutas de la API con el cliente de pruebas de Flask (SQLite temporal)."""
 
+import json
+import os
+
 import app as app_module
 
 
@@ -276,6 +279,48 @@ def test_imagin_y_tr_reportan_que_no_estan_conectados(client):
     assert r.status_code == 409
     assert r.get_json()["connected"] is False
     assert client.post("/api/imagin/refresh").status_code == 409
+
+
+def test_config_no_usa_nunca_el_fichero_de_ejemplo(client, monkeypatch, tmp_path):
+    """Sin config.json propio, la web NO propone datos de la plantilla.
+
+    Caer en config.example.json hacía que /api/config devolviera un SteamID que
+    no es el del usuario, que la web lo prefijara y que /api/steam valorara ese
+    inventario como su patrimonio.
+    """
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "CONFIG_PATH", str(tmp_path / "config.json"))
+    body = client.get("/api/config").get_json()
+    assert body["steamid"] == ""
+    assert body["moxfield"] == ""
+    # Y /api/steam sin id falla a la vista en vez de tirar de la plantilla.
+    r = client.get("/api/steam")
+    assert r.status_code == 400
+    assert "SteamID64" in r.get_json()["error"]
+
+
+def test_config_lee_el_config_json_real(client, monkeypatch, tmp_path):
+    import app as app_module
+
+    real = tmp_path / "config.json"
+    real.write_text(json.dumps({"steam": {"steamid64": "76561190000000001"},
+                                "moxfield": {"default_deck": "abc"}}))
+    monkeypatch.setattr(app_module, "CONFIG_PATH", str(real))
+    body = client.get("/api/config").get_json()
+    assert body["steamid"] == "76561190000000001"
+    assert body["moxfield"] == "abc"
+
+
+def test_la_plantilla_no_lleva_datos_reales():
+    """config.example.json está en el repo: no puede llevar un SteamID de verdad."""
+    import app as app_module
+
+    example = os.path.join(os.path.dirname(app_module.CONFIG_PATH), "config.example.json")
+    with open(example) as fh:
+        cfg = json.load(fh)
+    steamid = cfg["steam"]["steamid64"]
+    assert steamid.startswith("TU_"), f"la plantilla lleva un SteamID real: {steamid}"
 
 
 def test_magic_requiere_entrada(client):
