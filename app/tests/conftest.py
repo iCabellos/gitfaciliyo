@@ -30,8 +30,10 @@ def client():
     import app as app_module
     db.reset_snapshots()
     db.reset_holdings()
+    db.reset_prices()
     app_module.app.config["TESTING"] = True
     with app_module.app.test_client() as c:
         yield c
     db.reset_snapshots()
     db.reset_holdings()
+    db.reset_prices()

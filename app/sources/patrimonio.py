@@ -75,32 +75,41 @@ def pct(n):
     return f"{n:+.1f}%".replace(".", ",")
 
 
-# Cuántos movimientos caben en el mensaje antes de resumir el resto.
+# Cuántos movimientos de artículos sueltos caben antes de resumir el resto. El
+# patrimonio y sus categorías nunca se recortan: son pocos y son lo importante.
 MOVERS_LIMIT = 12
+MOVER_ICONS = {"total": "💼", "cat": "📦", "stock": "📄", "card": "🃏", "skin": "🔫"}
+PORTFOLIO_KINDS = ("total", "cat")
+
+
+def _mover_line(m):
+    arrow = "🔺" if m["direction"] == "up" else "🔻"
+    icon = MOVER_ICONS.get(m["kind"], "•")
+    return (f"{icon} {m['name']}\n"
+            f"   {arrow} {eur(m['price_from'])} → {eur(m['price_to'])} "
+            f"({pct(m['pct'])})")
 
 
 def movers_lines(movers, threshold=5.0, limit=MOVERS_LIMIT):
-    """Bloque de movimientos de precio de la semana (subidas Y bajadas).
+    """Bloque de movimientos de la semana (subidas Y bajadas).
 
-    Cada línea lleva el elemento, su precio ANTERIOR y el ACTUAL, y el
+    Cubre TODO el patrimonio: el total, cada categoría, cada acción, carta y
+    skin. Cada línea lleva el elemento, su valor ANTERIOR y el ACTUAL, y el
     porcentaje. Lista vacía -> se dice que nada superó el umbral (que también
     es información: confirma que el seguimiento está vivo).
     """
     header = f"📊 *Movimientos ≥{threshold:g}% esta semana*"
     if not movers:
-        return [f"{header}\nNinguna carta ni skin se movió más de un {threshold:g}%."]
-    icons = {"card": "🃏", "skin": "🔫"}
+        return [f"{header}\nNada de tu patrimonio se movió más de un {threshold:g}%."]
     days = movers[0].get("days")
     span = f" (últimos {days} días)" if days else ""
     lines = [header + span]
-    for m in movers[:limit]:
-        arrow = "🔺" if m["direction"] == "up" else "🔻"
-        icon = icons.get(m["kind"], "•")
-        lines.append(f"{icon} {m['name']}\n"
-                     f"   {arrow} {eur(m['price_from'])} → {eur(m['price_to'])} "
-                     f"({pct(m['pct'])})")
-    if len(movers) > limit:
-        lines.append(f"…y {len(movers) - limit} más (consúltalos en la web).")
+    portfolio = [m for m in movers if m["kind"] in PORTFOLIO_KINDS]
+    items = [m for m in movers if m["kind"] not in PORTFOLIO_KINDS]
+    lines.extend(_mover_line(m) for m in portfolio)
+    lines.extend(_mover_line(m) for m in items[:limit])
+    if len(items) > limit:
+        lines.append(f"…y {len(items) - limit} más (consúltalos en la web).")
     return lines
 
 

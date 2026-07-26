@@ -70,26 +70,39 @@
     <section class="panel glass tabpane" id="pane-historico">
       <div class="panel-head">
         <div class="icon-chip">🕒</div>
-        <div><h2>Histórico semanal · carta a carta y skin a skin</h2>
-          <p class="sub2">Precio de cierre de cada semana. Se marcan los movimientos
-             de al menos <b id="histThreshold">5</b>% respecto a la semana anterior,
-             suban o bajen.</p></div>
+        <div><h2>Histórico semanal · todo tu patrimonio</h2>
+          <p class="sub2">Valor de cierre de cada semana, del patrimonio total hasta
+             cada carta, skin y acción. Se marcan los movimientos de al menos
+             <b id="histThreshold">5</b>% respecto a la semana anterior, suban o bajen.</p></div>
       </div>
       <div class="m-statbar" id="histStats"></div>
       <div id="histWarn"></div>
+
+      <div class="chart-card" id="histPortfolioCard" style="margin-top:18px" hidden>
+        <div class="list-head" style="margin:0 0 4px">
+          <h3>Patrimonio semana a semana</h3>
+          <div class="list-tools">
+            <button type="button" class="m-chip" id="histRecordBtn">↻ Registrar punto de hoy</button>
+          </div>
+        </div>
+        <p class="hint" id="histPortfolioSub"></p>
+        <div class="chart-wrap"><canvas id="histPortfolioChart"></canvas></div>
+      </div>
 
       <h3 style="margin-top:20px">Movimientos de la última semana</h3>
       <div id="histMovers"></div>
 
       <div class="list-head" style="margin-top:22px">
-        <h3>Todos los elementos <span class="count-pill" id="histCount" hidden></span></h3>
+        <h3>Todo lo que sigo <span class="count-pill" id="histCount" hidden></span></h3>
         <div class="list-tools">
           <div class="m-search"><span>🔎</span>
-            <input type="search" id="histQ" placeholder="Buscar carta o skin…" autocomplete="off"></div>
+            <input type="search" id="histQ" placeholder="Buscar en el patrimonio…" autocomplete="off"></div>
           <select id="histKind" aria-label="Tipo">
-            <option value="">Cartas y skins</option>
-            <option value="card">Solo cartas</option>
-            <option value="skin">Solo skins</option>
+            <option value="">Todo el patrimonio</option>
+            <option value="total,cat">Total y categorías</option>
+            <option value="stock">Acciones / ETFs</option>
+            <option value="card">Cartas</option>
+            <option value="skin">Skins</option>
           </select>
         </div>
       </div>

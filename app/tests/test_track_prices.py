@@ -72,7 +72,7 @@ def test_load_watchlist_nunca_usa_el_ejemplo(monkeypatch):
 
 
 def test_main_falla_en_voz_alta_si_watchlist_vacia(monkeypatch, tmp_path):
-    """Sin nada que seguir NO se escribe histórico, pero el trabajo falla.
+    """Sin nada que seguir NO se inventan precios, pero el trabajo falla.
 
     Terminar en silencio es lo que dejó el histórico congelado durante semanas
     sin que se notara: ahora el cron se pone en rojo.
@@ -81,10 +81,31 @@ def test_main_falla_en_voz_alta_si_watchlist_vacia(monkeypatch, tmp_path):
 
     hist = tmp_path / "price_history.json"
     monkeypatch.setattr(tp.prices, "HISTORY_FILE", str(hist))
+    monkeypatch.setattr(tp.prices, "record_portfolio", lambda *a, **k: 0)
     monkeypatch.setattr(tp, "load_watchlist", lambda: {"cards": [], "skins": []})
     with pytest.raises(RuntimeError, match="Nada que seguir"):
         tp.main()
     assert not hist.exists()      # no genera histórico con datos inventados
+
+
+def test_main_registra_el_patrimonio_aunque_no_haya_watchlist(monkeypatch, tmp_path):
+    """El histórico del patrimonio no depende de Steam ni de Magic.
+
+    Si el inventario no está configurado el trabajo falla igual (hay que
+    arreglarlo), pero el patrimonio del día ya ha quedado registrado.
+    """
+    import pytest
+
+    hist = tmp_path / "price_history.json"
+    monkeypatch.setattr(tp.prices, "HISTORY_FILE", str(hist))
+    monkeypatch.setattr(tp.prices, "record_portfolio",
+                        lambda day=None: tp.prices.record(
+                            day, {"total:Patrimonio": 9615.87}) and 1)
+    monkeypatch.setattr(tp, "load_watchlist", lambda: {"cards": [], "skins": []})
+    with pytest.raises(RuntimeError, match="Nada que seguir"):
+        tp.main()
+    saved = json.loads(hist.read_text())
+    assert list(saved.values())[0] == {"total:Patrimonio": 9615.87}
 
 
 def test_main_falla_si_ninguna_fuente_devuelve_precio(monkeypatch, tmp_path):

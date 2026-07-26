@@ -89,6 +89,96 @@ def test_coverage_detecta_seguimiento_parado(historia):
     assert prices.coverage({})["days"] == 0
 
 
+# ---- el patrimonio entero dentro del mismo histórico ---------------------
+SNAPSHOTS = {
+    "2026-06": {"Liquidez (banco)": 6200.78, "Skins CS:GO": 1289.91,
+                "_flow:gastos": 2146.52},
+    "2026-07": {"Skins CS:GO": 1189.40, "Cartas Magic": 1041.51},
+}
+HOLDINGS = [{"name": "Apple Inc.", "quantity": 3.0, "unit_value": 180.5},
+            {"name": "S&P 500 EUR (Acc)", "quantity": 8.267789, "unit_value": 129.26}]
+
+
+def test_portfolio_points_cubre_total_categorias_y_acciones():
+    points = prices.portfolio_points(SNAPSHOTS, HOLDINGS)
+    # Cada categoría con su último valor conocido (la liquidez viene de junio).
+    assert points["cat:Liquidez (banco)"] == 6200.78
+    assert points["cat:Skins CS:GO"] == 1189.40
+    assert points["cat:Cartas Magic"] == 1041.51
+    # El total es la suma de esos últimos valores, sin contar los flujos.
+    assert points[prices.TOTAL_KEY] == 8431.69
+    # Y cada acción entra con su precio POR TÍTULO, no con su valor total.
+    assert points["stock:Apple Inc."] == 180.5
+    assert points["stock:S&P 500 EUR (Acc)"] == 129.26
+    assert not any(k.startswith("_flow") for k in points)
+
+
+def test_portfolio_points_sin_datos_no_inventa_nada():
+    assert prices.portfolio_points({}, []) == {}
+    assert prices.portfolio_points(None, None) == {}
+    # Una acción sin precio unitario no se registra (no vale un 0 falso).
+    assert prices.portfolio_points({}, [{"name": "X", "unit_value": 0}]) == {}
+
+
+def test_record_portfolio_guarda_el_punto_del_dia(monkeypatch, tmp_path):
+    monkeypatch.setattr(prices, "HISTORY_FILE", str(tmp_path / "price_history.json"))
+    saved = prices.record_portfolio("2026-07-26", snapshots=SNAPSHOTS, holdings=HOLDINGS)
+    assert saved == 6
+    assert prices.history()["2026-07-26"][prices.TOTAL_KEY] == 8431.69
+
+
+def test_record_fusiona_el_dia_en_vez_de_reemplazarlo(monkeypatch, tmp_path):
+    """El cron de precios y el registro del patrimonio caen el mismo día.
+
+    Escriben claves distintas: el segundo no puede borrar lo del primero.
+    """
+    monkeypatch.setattr(prices, "HISTORY_FILE", str(tmp_path / "price_history.json"))
+    prices.record("2026-07-26", {"card:Sol Ring": 3.85})
+    prices.record_portfolio("2026-07-26", snapshots=SNAPSHOTS, holdings=HOLDINGS)
+    day = prices.history()["2026-07-26"]
+    assert day["card:Sol Ring"] == 3.85          # sigue ahí
+    assert day[prices.TOTAL_KEY] == 8431.69      # y además el patrimonio
+
+
+def test_movers_incluye_el_patrimonio_y_lo_pone_primero():
+    hist = {
+        _day(7): {prices.TOTAL_KEY: 9000.0, "cat:Acciones / ETFs": 1000.0,
+                  "card:Sol Ring": 3.00},
+        _day(0): {prices.TOTAL_KEY: 9600.0, "cat:Acciones / ETFs": 1200.0,
+                  "card:Sol Ring": 3.90},
+    }
+    movers = prices.movers(hist, threshold=5.0)
+    assert [m["kind"] for m in movers] == ["total", "cat", "card"]
+    total = movers[0]
+    assert total["name"] == "Patrimonio"
+    assert total["kind_label"] == "Patrimonio"
+    assert (total["price_from"], total["price_to"], total["pct"]) == (9000.0, 9600.0, 6.7)
+    # La carta sube más (+30%) pero va detrás: primero se lee lo agregado.
+    assert movers[-1]["pct"] == 30.0
+
+
+def test_movers_y_weekly_table_filtran_por_tipo():
+    hist = {
+        _day(7): {prices.TOTAL_KEY: 9000.0, "card:Sol Ring": 3.00},
+        _day(0): {prices.TOTAL_KEY: 9600.0, "card:Sol Ring": 3.90},
+    }
+    solo_patrimonio = prices.movers(hist, threshold=5.0, kinds=prices.PORTFOLIO_KINDS)
+    assert [m["key"] for m in solo_patrimonio] == [prices.TOTAL_KEY]
+    solo_cartas = prices.weekly_table(hist, kinds=("card",))
+    assert [i["key"] for i in solo_cartas] == ["card:Sol Ring"]
+    assert solo_cartas[0]["kind_label"] == "Carta"
+
+
+def test_coverage_distingue_patrimonio_de_articulos():
+    hist = {_day(0): {prices.TOTAL_KEY: 9600.0, "cat:Cartas Magic": 1041.51,
+                      "card:Sol Ring": 3.90, "skin:AK-47": 36.10}}
+    cov = prices.coverage(hist)
+    assert cov["items"] == 2                 # la carta y la skin
+    assert cov["portfolio_items"] == 2       # el total y la categoría
+    assert cov["tracks_portfolio"] is True
+    assert prices.coverage({})["tracks_portfolio"] is False
+
+
 def test_record_escribe_fichero_y_base_de_datos(monkeypatch, tmp_path):
     from sources import db
 

@@ -202,12 +202,24 @@ NOTHING_TO_TRACK = (
 
 
 def main():
-    """Registra los precios de hoy. Falla (excepción) si no hay nada que seguir."""
+    """Registra el punto de hoy: patrimonio completo + precios de cartas y skins.
+
+    Falla (excepción) si no hay nada que seguir. El patrimonio se registra ANTES
+    de comprobar la watchlist: aunque Steam o Magic no estén configurados, el
+    histórico del patrimonio debe seguir creciendo.
+    """
+    today = datetime.date.today().isoformat()
+    try:
+        saved = prices.record_portfolio(today)
+        print(f"Patrimonio: {saved} series registradas"
+              if saved else "Patrimonio: sin snapshots todavía, nada que registrar.")
+    except Exception as exc:  # noqa: BLE001 - no debe impedir seguir los precios
+        print(f"  ! No pude registrar el patrimonio (¿sin DATABASE_URL?): {exc}")
+
     wl = load_watchlist()
     print(f"Watchlist: {len(wl['cards'])} cartas, {len(wl['skins'])} skins")
     if not wl["cards"] and not wl["skins"]:
         raise RuntimeError(NOTHING_TO_TRACK)
-    today = datetime.date.today().isoformat()
     day_prices = {}
     day_prices.update(card_prices(wl["cards"]))
     day_prices.update(skin_prices(wl["skins"]))

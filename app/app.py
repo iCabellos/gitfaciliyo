@@ -32,9 +32,11 @@ API:
     POST /api/trade-republic/pair/verify {code} completa el emparejado
     POST /api/trade-republic/live               cartera en vivo
 
-    -- precios e histórico --
-    GET  /api/prices/weekly                     serie SEMANAL de cada carta/skin
+    -- histórico semanal de TODO el patrimonio --
+    GET  /api/prices/weekly[?kind=cat,card]     serie SEMANAL (total, categorías,
+                                                acciones, cartas y skins)
     GET  /api/prices/movers?threshold=5         movimientos de la semana
+    POST /api/prices/record                     registra el punto de hoy
     GET  /api/holdings?month=YYYY-MM            valores registrados y sus títulos
 """
 
@@ -227,10 +229,16 @@ def api_monthly_summary():
     if expected and request.args.get("token", "") != expected:
         return jsonify({"error": "No autorizado."}), 403
     refreshed, refresh_errors, skipped = revalue.refresh_live()
-    s = patrimonio.summary(db.get_snapshots())
+    snapshots = db.get_snapshots()
+    s = patrimonio.summary(snapshots)
     if not s:
         return jsonify({"error": "Sin datos.", "refresh_errors": refresh_errors,
                         "not_connected": skipped}), 404
+    # Registrar el punto de hoy de TODO el patrimonio antes de calcular los
+    # movimientos: así el histórico semanal incluye el total, cada categoría y
+    # cada acción, y no solo las cartas y skins que sigue el cron diario.
+    holdings = db.get_holdings(month=_latest_holdings_month())
+    prices.record_portfolio(snapshots=snapshots, holdings=holdings)
     history = prices.history()
     movers = prices.movers(history, threshold=prices.THRESHOLD)
     warnings = [f"{cat} no se pudo revalorizar: {err}"
@@ -239,7 +247,7 @@ def api_monthly_summary():
     warnings += coverage_warnings(prices.coverage(history))
     message = patrimonio.whatsapp_message(
         s, warnings=warnings, movers=movers, threshold=prices.THRESHOLD,
-        holdings=db.get_holdings(month=_latest_holdings_month()))
+        holdings=holdings)
     sent = send_whatsapp(message)
     return jsonify({"sent": bool(sent), "summary": s, "refreshed": refreshed,
                     "refresh_errors": refresh_errors, "not_connected": skipped,
@@ -263,25 +271,48 @@ def _days_arg(default=180):
         return default
 
 
+def _kinds_arg():
+    """?kind=card,skin -> ('card','skin'). Sin parámetro, todos los tipos."""
+    raw = (request.args.get("kind") or "").strip()
+    kinds = tuple(k for k in (p.strip() for p in raw.split(",")) if k)
+    return kinds or None
+
+
 @app.route("/api/prices/weekly")
 @api_error(500)
 def api_prices_weekly():
-    """Serie SEMANAL de cada carta/skin, con su variación respecto a la anterior."""
+    """Serie SEMANAL de TODO el patrimonio: total, categorías, acciones, cartas y skins.
+
+    `items` trae cada serie con su tipo; `portfolio` repite solo las agregadas
+    (patrimonio total y categorías) porque son las del gráfico de cabecera.
+    """
     history = prices.history(days=_days_arg())
-    return jsonify({"items": prices.weekly_table(history),
+    return jsonify({"items": prices.weekly_table(history, kinds=_kinds_arg()),
+                    "portfolio": prices.weekly_table(history, kinds=prices.PORTFOLIO_KINDS),
                     "coverage": prices.coverage(history),
+                    "kinds": prices.KIND_LABEL,
+                    "total_key": prices.TOTAL_KEY,
                     "threshold": prices.THRESHOLD})
 
 
 @app.route("/api/prices/movers")
 @api_error(500)
 def api_prices_movers():
-    """Cartas/skins que se han movido al menos el umbral (por defecto 5%)."""
+    """Lo que se ha movido al menos el umbral (por defecto 5%), en todo el patrimonio."""
     history = prices.history(days=_days_arg(60))
     threshold = _threshold_arg()
     return jsonify({"threshold": threshold,
-                    "movers": prices.movers(history, threshold=threshold),
+                    "movers": prices.movers(history, threshold=threshold,
+                                            kinds=_kinds_arg()),
                     "coverage": prices.coverage(history)})
+
+
+@app.route("/api/prices/record", methods=["POST"])
+@api_error(500)
+def api_prices_record():
+    """Registra ahora mismo el punto del patrimonio completo en el histórico."""
+    saved = prices.record_portfolio()
+    return jsonify({"recorded": saved, "coverage": prices.coverage(prices.history())})
 
 
 # ---------------------------------------------------------------------------
