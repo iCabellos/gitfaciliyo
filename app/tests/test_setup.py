@@ -10,7 +10,6 @@ from sources import db, setup, trade_republic_live, enablebanking
 SECRETOS = {
     "ENABLE_BANKING_APP_ID": "app-secreta-123",
     "ENABLE_BANKING_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----MUY-SECRETO-----",
-    "ENABLE_BANKING_REDIRECT_URL": "https://ejemplo.test/volver",
     "TR_PHONE": "+34600111222",
     "TR_PIN": "9876",
     "CALLMEBOT_APIKEY": "clave-callmebot",
@@ -18,17 +17,26 @@ SECRETOS = {
     "SUMMARY_TOKEN": "token-del-resumen",
 }
 
+# La URL de retorno NO es un secreto: hay que registrarla en Enable Banking y
+# se ve en la barra de direcciones al volver del banco. Es justo lo que la web
+# tiene que enseñar, igual que el SteamID64.
+REDIRECT_URL = "https://ejemplo.test/volver"
+ENTORNO = dict(SECRETOS, ENABLE_BANKING_REDIRECT_URL=REDIRECT_URL,
+               ENABLE_BANKING_ASPSP="", ENABLE_BANKING_COUNTRY="")
+
 
 @pytest.fixture(autouse=True)
 def _sin_entorno(monkeypatch):
-    for nombre in SECRETOS:
+    for nombre in ENTORNO:
         monkeypatch.delenv(nombre, raising=False)
     db.set_setting(enablebanking.SESSION_SETTING, {})
+    db.set_setting(enablebanking.ASPSP_SETTING, {})
     db.set_setting(trade_republic_live.DEVICE_KEY_SETTING, {})
     db.set_setting("magic_cards", {})
     db.set_setting("steam_id64", "")
     yield
     db.set_setting(enablebanking.SESSION_SETTING, {})
+    db.set_setting(enablebanking.ASPSP_SETTING, {})
     db.set_setting(trade_republic_live.DEVICE_KEY_SETTING, {})
     db.set_setting("magic_cards", {})
     db.set_setting("steam_id64", "")
@@ -67,22 +75,42 @@ def test_nunca_se_filtra_el_valor_de_un_secreto(monkeypatch):
 def test_imagin_necesita_el_servidor_antes_de_poder_empezar(monkeypatch):
     estado = _fuente(setup.status(), "imagin")
     assert estado["server_ready"] is False
+    # La URL de retorno ya NO es obligatoria: si no se define, se usa la de la
+    # propia web. Lo único que no se puede suplir son las credenciales.
     assert set(estado["missing_env"]) == {"ENABLE_BANKING_APP_ID",
-                                          "ENABLE_BANKING_REDIRECT_URL",
                                           "ENABLE_BANKING_PRIVATE_KEY"}
     # Con las credenciales puestas ya se puede empezar, aunque falte autorizar.
     monkeypatch.setenv("ENABLE_BANKING_APP_ID", SECRETOS["ENABLE_BANKING_APP_ID"])
     monkeypatch.setenv("ENABLE_BANKING_PRIVATE_KEY", SECRETOS["ENABLE_BANKING_PRIVATE_KEY"])
-    monkeypatch.setenv("ENABLE_BANKING_REDIRECT_URL", SECRETOS["ENABLE_BANKING_REDIRECT_URL"])
     estado = _fuente(setup.status(), "imagin")
     assert estado["server_ready"] is True and estado["missing_env"] == []
     assert estado["connected"] is False
     assert "falta autorizar" in estado["summary"]
 
 
+def test_imagin_muestra_la_url_de_retorno_que_hay_que_registrar():
+    """Sin ver esta URL no hay forma de registrarla en Enable Banking."""
+    estado = _fuente(setup.status(callback_url="https://mi-app.test/imagin/callback"),
+                     "imagin")
+    assert estado["detail"]["redirect_url"] == "https://mi-app.test/imagin/callback"
+
+
+def test_imagin_la_url_del_servidor_manda_sobre_la_de_la_web(monkeypatch):
+    monkeypatch.setenv("ENABLE_BANKING_REDIRECT_URL", REDIRECT_URL)
+    estado = _fuente(setup.status(callback_url="https://mi-app.test/imagin/callback"),
+                     "imagin")
+    assert estado["detail"]["redirect_url"] == REDIRECT_URL
+
+
+def test_imagin_muestra_el_banco_elegido_desde_la_web():
+    enablebanking.set_aspsp("CaixaBank", "ES")
+    estado = _fuente(setup.status(), "imagin")
+    assert estado["detail"]["aspsp"] == {"name": "CaixaBank", "country": "ES"}
+    assert "CaixaBank" in estado["name"]
+
+
 def test_imagin_vale_tambien_con_la_clave_en_fichero(monkeypatch):
     monkeypatch.setenv("ENABLE_BANKING_APP_ID", "x")
-    monkeypatch.setenv("ENABLE_BANKING_REDIRECT_URL", "https://x.test/")
     monkeypatch.setenv("ENABLE_BANKING_KEY_PATH", "/data/clave.pem")
     assert _fuente(setup.status(), "imagin")["missing_env"] == []
 
@@ -90,7 +118,6 @@ def test_imagin_vale_tambien_con_la_clave_en_fichero(monkeypatch):
 def test_imagin_conectado_muestra_las_cuentas_sin_el_iban_entero(monkeypatch):
     monkeypatch.setenv("ENABLE_BANKING_APP_ID", "x")
     monkeypatch.setenv("ENABLE_BANKING_PRIVATE_KEY", "x")
-    monkeypatch.setenv("ENABLE_BANKING_REDIRECT_URL", "https://x.test/")
     db.set_setting(enablebanking.SESSION_SETTING, {
         "session_id": "s1", "access_valid_until": "2026-10-24T00:00:00Z",
         "accounts": [{"uid": "a1", "iban": "ES9121000418450200051332", "name": "imagin"}]})

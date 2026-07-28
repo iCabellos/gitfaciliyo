@@ -19,6 +19,41 @@ services:
         sync: false
       - key: ENABLE_SCHEDULER
         value: "0"            # los jobs van por GitHub Actions, no en la web
+
+      # --- Banco por PSD2 (Enable Banking) ---------------------------------
+      # Se declaran aquí para que Render cree el hueco y solo haya que pegar el
+      # valor: sin esto había que acordarse del nombre exacto de cada variable.
+      # La URL de retorno que hay que registrar en Enable Banking la muestra la
+      # propia web en ⚙️ Configuración (es https://<tu-app>/imagin/callback).
+      - key: ENABLE_BANKING_APP_ID
+        sync: false
+      - key: ENABLE_BANKING_PRIVATE_KEY    # PEM completo o su base64
+        sync: false
+      - key: ENABLE_BANKING_COUNTRY
+        value: ES
+      # Opcional: fija el banco y desactiva el selector de la web. Si se deja
+      # vacío, el banco se elige desde ⚙️ Configuración.
+      - key: ENABLE_BANKING_ASPSP
+        sync: false
+      # Opcional: solo si registraste en Enable Banking una URL de retorno
+      # distinta de /imagin/callback.
+      - key: ENABLE_BANKING_REDIRECT_URL
+        sync: false
+
+      # --- Trade Republic (para que el resumen semanal entre solo) ----------
+      - key: TR_PHONE
+        sync: false
+      - key: TR_PIN
+        sync: false
+
+      # --- Resumen semanal por WhatsApp (gratis, CallMeBot) ----------------
+      - key: CALLMEBOT_APIKEY
+        sync: false
+      - key: CALLMEBOT_PHONE
+        sync: false
+      - key: SUMMARY_TOKEN
+        sync: false
+
       # Opcionales: solo si además quieres RECIBIR PDFs por WhatsApp (vía Twilio).
       - key: TWILIO_ACCOUNT_SID
         sync: false

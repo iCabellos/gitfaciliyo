@@ -39,34 +39,108 @@
   // =========================================================================
   // imagin (Enable Banking)
   // =========================================================================
+  // Consentimiento máximo (en segundos) que admite el banco elegido: se manda
+  // al autorizar para no pedir más días de los que ese banco acepta.
+  let BANK_MAX_CONSENT = null;
+
   async function imaginStatus() {
     const chip = $("#imaginState");
-    if (!chip) return;
+    const redirect = $("#imaginRedirect");
+    let s;
     try {
-      const s = await api("/api/imagin/status");
-      if (s.connected) {
-        const accounts = (s.accounts || []).map((a) => a.name || `···${a.iban_end}`).join(", ");
-        chip.textContent = "conectado";
-        note("#imaginResult", `Autorizado${accounts ? " · " + accounts : ""}`
-          + (s.valid_until ? ` · consentimiento hasta ${s.valid_until}` : ""));
-      } else {
-        chip.textContent = "sin conectar";
-      }
+      s = await api("/api/imagin/status");
     } catch (e) {
+      if (chip) chip.textContent = "sin conectar";
+      return;
+    }
+    // La URL de retorno hay que registrarla en Enable Banking tal cual: es el
+    // dato que antes no se veía en ninguna parte.
+    if (redirect && s.redirect_url) redirect.value = s.redirect_url;
+    if (!chip) return;
+    if (s.connected) {
+      const accounts = (s.accounts || []).map((a) => a.name || `···${a.iban_end}`).join(", ");
+      chip.textContent = "conectado";
+      note("#imaginResult", `Autorizado${accounts ? " · " + accounts : ""}`
+        + (s.valid_until ? ` · consentimiento hasta ${s.valid_until}` : ""));
+    } else {
       chip.textContent = "sin conectar";
     }
   }
 
+  const imaginCopy = $("#imaginCopyRedirect");
+  if (imaginCopy) imaginCopy.addEventListener("click", async () => {
+    const value = ($("#imaginRedirect") || {}).value || "";
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      note("#imaginResult", "URL de retorno copiada. Pégala en tu aplicación de Enable Banking.");
+    } catch (e) {
+      // Sin permiso de portapapeles: al menos se deja seleccionada para copiar.
+      $("#imaginRedirect").select();
+      note("#imaginResult", "Selecciona y copia la URL de retorno (Ctrl+C).", true);
+    }
+  });
+
+  // ---- lista de bancos: los nombres EXACTOS que reconoce Enable Banking ----
+  const imaginBanks = $("#imaginBanksBtn");
+  if (imaginBanks) imaginBanks.addEventListener("click", () => loadBanks(true));
+
+  async function loadBanks(verbose) {
+    const select = $("#imaginBank");
+    if (!select) return;
+    if (verbose) note("#imaginResult", "Pidiendo a Enable Banking los bancos de tu país…");
+    busy(imaginBanks, true);
+    try {
+      const r = await api("/api/imagin/banks");
+      const selected = (r.selected || {}).name || "";
+      select.innerHTML = (r.aspsps || []).map((a) =>
+        `<option value="${esc(a.name)}" data-max="${esc(a.maximum_consent_validity || "")}"${
+          a.name === selected ? " selected" : ""}>${esc(a.name)}${a.beta ? " (beta)" : ""}</option>`
+      ).join("") || `<option value="">Enable Banking no devolvió ningún banco para ${esc(r.country)}</option>`;
+      select.disabled = !!r.fixed_by_env;
+      rememberMaxConsent(select);
+      if (verbose) {
+        note("#imaginResult", r.fixed_by_env
+          ? `El banco lo fija ENABLE_BANKING_ASPSP en el servidor (${esc(selected)}).`
+          : `${(r.aspsps || []).length} bancos en ${esc(r.country)}. Elige el tuyo.`);
+      }
+    } catch (e) { note("#imaginResult", e.message, true); }
+    finally { busy(imaginBanks, false); }
+  }
+
+  function rememberMaxConsent(select) {
+    const opt = select.selectedOptions[0];
+    const max = opt && opt.dataset.max ? Number(opt.dataset.max) : null;
+    BANK_MAX_CONSENT = Number.isFinite(max) && max > 0 ? max : null;
+  }
+
+  const imaginBank = $("#imaginBank");
+  if (imaginBank) imaginBank.addEventListener("change", async (ev) => {
+    const name = ev.target.value;
+    if (!name) return;
+    rememberMaxConsent(ev.target);
+    try {
+      await postJSON("/api/imagin/bank", { name });
+      note("#imaginResult", `Banco guardado: ${name}. Ya puedes pulsar «Autorizar».`);
+      if (window.Setup) window.Setup.load();
+    } catch (e) { note("#imaginResult", e.message, true); }
+  });
+
   const imaginAuth = $("#imaginAuthBtn");
   if (imaginAuth) imaginAuth.addEventListener("click", async () => {
     busy(imaginAuth, true);
-    note("#imaginResult", "Pidiendo la autorización a imagin…");
+    note("#imaginResult", "Pidiendo la autorización a tu banco…");
     try {
-      const r = await postJSON("/api/imagin/auth");
-      note("#imaginResult", `Abre esta URL, autoriza en imagin y pega aquí el "code" del retorno.`);
-      window.open(r.url, "_blank", "noopener");
-    } catch (e) { note("#imaginResult", e.message, true); }
-    finally { busy(imaginAuth, false); }
+      const r = await postJSON("/api/imagin/auth",
+        BANK_MAX_CONSENT ? { maximum_consent_validity: BANK_MAX_CONSENT } : {});
+      // Se navega en ESTA pestaña: al volver, el retorno completa la conexión
+      // solo. Abrirlo en otra pestaña es lo que obligaba a copiar el «code».
+      note("#imaginResult", "Abriendo tu banco para que autorices…");
+      window.location.href = r.url;
+    } catch (e) {
+      note("#imaginResult", e.message, true);
+      busy(imaginAuth, false);
+    }
   });
 
   const imaginSession = $("#imaginSessionBtn");
@@ -80,9 +154,44 @@
       $("#imaginCode").value = "";
       note("#imaginResult", `Conectado: ${(r.accounts || []).length} cuenta(s).`);
       imaginStatus();
+      if (window.Setup) window.Setup.load();
     } catch (e) { note("#imaginResult", e.message, true); }
     finally { busy(imaginSession, false); }
   });
+
+  // ---- vuelta del banco tras el SCA ---------------------------------------
+  // /imagin/callback ya ha cambiado el `code` por una sesión y nos manda aquí
+  // con el resultado. Si alguien registró la raíz («/») como URL de retorno, el
+  // `code` llega aquí sin canjear: se canjea en ese momento.
+  async function handleReturn() {
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get("imagin");
+    const code = params.get("code");
+    if (!outcome && !code) return;
+    const clean = () => window.history.replaceState({}, "", window.location.pathname);
+    // El resultado se pinta dentro de la pestaña de Configuración: si no se
+    // abre, el usuario vuelve del banco y no ve nada.
+    const tab = $('#tabs button[data-tab="config"]');
+    if (tab) tab.click();
+    if (outcome === "ok") {
+      const n = params.get("accounts");
+      note("#imaginResult", `✓ Banco conectado${n ? `: ${n} cuenta(s)` : ""}.`);
+      clean(); imaginStatus();
+      if (window.Setup) window.Setup.load();
+    } else if (outcome === "error") {
+      note("#imaginResult", params.get("detail") || "El banco rechazó la autorización.", true);
+      clean();
+    } else if (code) {
+      note("#imaginResult", "Completando la conexión con tu banco…");
+      try {
+        const r = await postJSON("/api/imagin/session", { code, state: params.get("state") });
+        note("#imaginResult", `✓ Banco conectado: ${(r.accounts || []).length} cuenta(s).`);
+        imaginStatus();
+        if (window.Setup) window.Setup.load();
+      } catch (e) { note("#imaginResult", e.message, true); }
+      clean();
+    }
+  }
 
   const imaginRefresh = $("#imaginRefreshBtn");
   if (imaginRefresh) imaginRefresh.addEventListener("click", async () => {
@@ -219,7 +328,7 @@
   const holdMonth = $("#holdMonth");
   if (holdMonth) holdMonth.addEventListener("change", (e) => loadHoldings(e.target.value));
 
-  imaginStatus();
+  imaginStatus().then(handleReturn);
   trStatus();
   loadHoldings();
   window.Holdings = { load: loadHoldings };

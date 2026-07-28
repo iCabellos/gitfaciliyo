@@ -36,6 +36,30 @@ docker run -d -p 8000:8000 \
 
 Pon un proxy con HTTPS (Caddy/Nginx/Cloudflare) delante para la URL pública.
 
+> La app lee `X-Forwarded-Proto` / `X-Forwarded-Host` (ProxyFix). Es lo que hace
+> que la URL de retorno del banco salga como `https://tu-dominio/…` y no como
+> `http://`, que es lo que Enable Banking rechazaría. Si pones tu propio proxy,
+> asegúrate de que manda esas cabeceras.
+
+## Conectar el banco (PSD2 · Enable Banking)
+
+1. Regístrate en [enablebanking.com](https://enablebanking.com/docs/) y crea una
+   aplicación en modo **restricted production** (gratis para leer TUS cuentas).
+2. Abre tu panel en **⚙️ Configuración** y copia la **URL de retorno** que
+   muestra la tarjeta del banco: es `https://<tu-app>/imagin/callback`. Regístrala
+   en tu aplicación de Enable Banking **tal cual** (si no coincide carácter a
+   carácter, el banco rechaza la autorización).
+3. En Render → **Environment** pega `ENABLE_BANKING_APP_ID` y
+   `ENABLE_BANKING_PRIVATE_KEY` (el PEM completo o su base64). El blueprint ya
+   deja creados esos huecos.
+4. Vuelve a ⚙️ Configuración, pulsa **🔎 Buscar bancos** y elige el tuyo de la
+   lista (son los nombres exactos que reconoce Enable Banking).
+5. Pulsa **Autorizar en mi banco**, confirma el SCA en la app del banco y, al
+   volver, la conexión se completa sola.
+
+El consentimiento PSD2 caduca a los ~90 días: cuando pase, el resumen semanal
+avisa con ⚠️ y basta con volver a pulsar «Autorizar».
+
 ## WhatsApp (Twilio)
 
 1. Crea cuenta en [twilio.com](https://www.twilio.com/) → **Messaging → Try WhatsApp**.

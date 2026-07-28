@@ -1,6 +1,12 @@
 /* ===========================================================================
-   Capa de animación: Lenis (scroll suave) + GSAP/ScrollTrigger (parallax,
-   reveals, contadores). Con failsafes: si algo falla, todo queda visible.
+   Capa de animación: GSAP/ScrollTrigger (parallax, reveals, contadores).
+   Con failsafes: si algo falla, todo queda visible.
+
+   Sin scroll «suave» por JavaScript (antes, Lenis): interceptaba la rueda y
+   repintaba la página durante ~1,15 s en cada gesto, así que cualquier
+   fotograma lento se arrastraba durante todo ese tiempo y el scroll se sentía
+   pegajoso. El scroll nativo del navegador ya va a la tasa de refresco de la
+   pantalla y no compite con el resto de la página.
    =========================================================================== */
 (function () {
   "use strict";
@@ -18,16 +24,6 @@
 
   try {
     gsap.registerPlugin(ScrollTrigger);
-
-    // ---- Lenis: scroll con inercia, sincronizado con ScrollTrigger ----
-    let lenis = null;
-    if (typeof window.Lenis !== "undefined") {
-      lenis = new Lenis({ duration: 1.15, smoothWheel: true,
-        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)) });
-      lenis.on("scroll", ScrollTrigger.update);
-      gsap.ticker.add((t) => lenis.raf(t * 1000));
-      gsap.ticker.lagSmoothing(0);
-    }
 
     // ---- Parallax del fondo (aurora) ----
     const par = [["blob-a", -120], ["blob-b", 180], ["blob-c", -220], ["grid", 90]];
@@ -49,13 +45,25 @@
     });
 
     // ---- Resplandor que sigue al cursor en los paneles ----
+    // Una sola actualización por fotograma: antes se medía el panel
+    // (`getBoundingClientRect`, que fuerza un cálculo de maquetado) y se
+    // repintaba un degradado grande en CADA evento del ratón, que llegan
+    // muchos más que fotogramas hay.
+    let glowCard = null, glowX = 0, glowY = 0, glowPending = false;
     document.addEventListener("pointermove", (e) => {
       const card = e.target.closest(".glass");
       if (!card) return;
-      const r = card.getBoundingClientRect();
-      card.style.setProperty("--mx", (e.clientX - r.left) + "px");
-      card.style.setProperty("--my", (e.clientY - r.top) + "px");
-    });
+      glowCard = card; glowX = e.clientX; glowY = e.clientY;
+      if (glowPending) return;
+      glowPending = true;
+      requestAnimationFrame(() => {
+        glowPending = false;
+        if (!glowCard) return;
+        const r = glowCard.getBoundingClientRect();
+        glowCard.style.setProperty("--mx", (glowX - r.left) + "px");
+        glowCard.style.setProperty("--my", (glowY - r.top) + "px");
+      });
+    }, { passive: true });
 
     // ---- Transición al cambiar de pestaña ----
     document.querySelectorAll("#tabs button").forEach((b) => {

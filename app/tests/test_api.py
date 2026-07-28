@@ -281,6 +281,92 @@ def test_imagin_y_tr_reportan_que_no_estan_conectados(client):
     assert client.post("/api/imagin/refresh").status_code == 409
 
 
+def test_imagin_status_dice_que_url_de_retorno_registrar(client):
+    """Sin ver esta URL no se puede registrar la aplicación en Enable Banking."""
+    body = client.get("/api/imagin/status").get_json()
+    assert body["callback_url"].endswith("/imagin/callback")
+    assert body["redirect_url"] == body["callback_url"]
+
+
+def test_imagin_status_respeta_la_url_del_servidor(client, monkeypatch):
+    monkeypatch.setenv("ENABLE_BANKING_REDIRECT_URL", "https://otra.test/vuelta")
+    body = client.get("/api/imagin/status").get_json()
+    assert body["redirect_url"] == "https://otra.test/vuelta"
+    assert body["callback_url"].endswith("/imagin/callback")
+
+
+def test_imagin_callback_completa_la_conexion(client, monkeypatch):
+    """El retorno del banco canjea el `code` solo: antes no había ruta que lo cogiera."""
+    from sources import enablebanking
+
+    vistos = {}
+
+    def fake_complete(code, state=None):
+        vistos["code"] = code
+        vistos["state"] = state
+        return {"accounts": [{"uid": "a1"}, {"uid": "a2"}]}
+
+    monkeypatch.setattr(enablebanking, "complete_auth", fake_complete)
+    r = client.get("/imagin/callback?code=abc123&state=xyz")
+    assert r.status_code == 302
+    assert vistos == {"code": "abc123", "state": "xyz"}
+    assert "imagin=ok" in r.headers["Location"]
+    assert "accounts=2" in r.headers["Location"]
+
+
+def test_imagin_callback_muestra_el_error_real_del_banco(client):
+    r = client.get("/imagin/callback?error=access_denied&error_description=SCA+cancelado")
+    assert r.status_code == 302
+    assert "imagin=error" in r.headers["Location"]
+    assert "SCA" in r.headers["Location"]
+
+
+def test_imagin_callback_sin_code_no_se_queda_callado(client):
+    r = client.get("/imagin/callback")
+    assert r.status_code == 302
+    assert "imagin=error" in r.headers["Location"]
+
+
+def test_imagin_callback_con_un_fallo_no_devuelve_un_500(client, monkeypatch):
+    from sources import enablebanking
+
+    def boom(code, state=None):
+        raise enablebanking.EnableBankingError("consentimiento caducado")
+
+    monkeypatch.setattr(enablebanking, "complete_auth", boom)
+    r = client.get("/imagin/callback?code=abc")
+    assert r.status_code == 302
+    assert "imagin=error" in r.headers["Location"]
+    assert "caducado" in r.headers["Location"]
+
+
+def test_imagin_banco_se_puede_elegir_y_queda_guardado(client):
+    from sources import db, enablebanking
+
+    try:
+        r = client.post("/api/imagin/bank", json={"name": "CaixaBank", "country": "es"})
+        assert r.status_code == 200
+        assert r.get_json()["selected"] == {"name": "CaixaBank", "country": "ES"}
+        assert enablebanking.default_aspsp()["name"] == "CaixaBank"
+        # Y el estado de configuración lo refleja.
+        imagin = next(s for s in client.get("/api/setup").get_json()["sources"]
+                      if s["id"] == "imagin")
+        assert imagin["detail"]["aspsp"]["name"] == "CaixaBank"
+    finally:
+        db.set_setting(enablebanking.ASPSP_SETTING, {})
+
+
+def test_imagin_banco_sin_nombre_es_un_400(client):
+    assert client.post("/api/imagin/bank", json={"name": "  "}).status_code == 400
+
+
+def test_imagin_banks_sin_credenciales_dice_que_faltan(client):
+    """Listar bancos necesita la aplicación de Enable Banking: 409, no 500."""
+    r = client.get("/api/imagin/banks")
+    assert r.status_code == 409
+    assert r.get_json()["connected"] is False
+
+
 def test_config_no_usa_nunca_el_fichero_de_ejemplo(client, monkeypatch, tmp_path):
     """Sin config.json propio, la web NO propone datos de la plantilla.
 
