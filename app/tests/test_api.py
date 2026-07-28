@@ -18,7 +18,39 @@ def test_version(client):
     assert r.status_code == 200
     assert body["version"] == app_module.APP_VERSION
     assert body["db"] == "sqlite"
+    assert body["db_ok"] is True
     assert "banco" in body["sources"]
+
+
+def test_version_avisa_si_la_base_de_datos_no_responde(client, monkeypatch):
+    """Es lo que hay que mirar tras desplegar: si la DB está caída, que se diga."""
+    from sources import db
+
+    monkeypatch.setattr(db, "check", lambda: (False, "database is not accepting connections"))
+    body = client.get("/api/version").get_json()
+    assert body["db_ok"] is False
+    assert "not accepting connections" in body["db_error"]
+
+
+def test_con_la_base_de_datos_caida_la_api_responde_json_y_no_un_500_en_html(client, monkeypatch):
+    """Con la Postgres caducada estas rutas devolvían HTML crudo.
+
+    La web hace `res.json()` con la respuesta, así que un 500 en HTML se
+    convertía en un error ilegible en pantalla en vez del motivo real.
+    """
+    from sources import db
+
+    def caida(*a, **k):
+        raise RuntimeError("could not connect to server: Connection refused")
+
+    for nombre in ("get_snapshots", "get_setting"):
+        monkeypatch.setattr(db, nombre, caida)
+
+    for ruta in ("/api/snapshots", "/api/summary", "/api/cards"):
+        r = client.get(ruta)
+        assert r.status_code == 500, ruta
+        assert r.is_json, f"{ruta} devolvió {r.content_type}, no JSON"
+        assert "could not connect" in r.get_json()["error"], ruta
 
 
 def test_security_headers(client):

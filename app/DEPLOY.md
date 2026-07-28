@@ -11,13 +11,43 @@ de precios.
 > precios no se conservaría entre ejecuciones. Por eso se usa **una instancia
 > siempre activa + disco**: así el job diario y el semanal comparten los datos.
 
+## La base de datos va FUERA de Render (Neon)
+
+> ⚠️ **No uses la Postgres gratuita de Render.** [Caduca a los 30 días de
+> creada](https://render.com/docs/free): al expirar «is inaccessible unless you
+> upgrade it to a paid instance type», y 14 días después Render la **borra con
+> todos los datos dentro**. Es un problema garantizado, no una posibilidad.
+
+**Neon** ([neon.com](https://neon.com)) es la sustituta: Postgres gestionada,
+plan gratuito **permanente**, sin tarjeta y **sin caducidad**. 0,5 GB por
+proyecto y 100 CU-horas/mes, de sobra para esto. Su compute baja a cero a los
+5 min de inactividad y despierta sola al conectarse; el tiempo dormida no gasta
+horas. Como es Postgres, la app no cambia: `sources/db.py` habla por
+`DATABASE_URL` con SQLAlchemy.
+
+1. Crea cuenta en Neon → **New project** (región cercana, p. ej. Frankfurt).
+2. Copia la cadena de conexión del **pooler** (el host lleva `-pooler`).
+3. Pégala en Render → **Environment** → `DATABASE_URL` y guarda.
+4. Comprueba en `/api/version` que dice `"db_ok": true`.
+
+Alternativas que también son gratis para siempre, por si acaso:
+
+| | Gratis siempre | Pega |
+|---|---|---|
+| **Neon** | ✅ sin tarjeta | Compute dormido: la primera consulta tarda un poco |
+| Supabase | ✅ sin tarjeta | **Pausa el proyecto tras 1 semana sin actividad** y hay que despausarlo a mano |
+| Aiven | ✅ sin tarjeta | 1 GB, solo regiones de DigitalOcean |
+| ~~Render Postgres~~ | ❌ | Caduca a los 30 días y se borra |
+
 ## Opción A — Render (recomendada, con `render.yaml`)
 
 1. Sube este repo a GitHub (ya está).
 2. En Render: **New → Blueprint** y apunta al repo. Detectará `render.yaml` (en la raíz).
-3. Render crea un servicio web (plan **starter**, no *free*) con disco de 1 GB.
-4. En **Environment**, rellena las variables de Twilio (ver abajo). `ENABLE_SCHEDULER`
-   ya viene a `1`.
+3. Render crea el servicio web. El plan **free** no caduca (solo se duerme por
+   inactividad y despierta al abrirlo); el que caduca es la base de datos, por
+   eso va en Neon.
+4. En **Environment**, pega `DATABASE_URL` (Neon) y lo que quieras de los demás
+   huecos que el blueprint ya deja creados.
 5. Deploy. Te dará una URL pública tipo `https://mi-patrimonio.onrender.com`.
 
 ## Opción B — Cualquier host Docker (Fly.io, Railway, VPS…)

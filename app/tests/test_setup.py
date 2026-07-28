@@ -165,9 +165,25 @@ def test_magic_cuenta_las_lineas_guardadas():
     assert "2 líneas" in estado["summary"]
 
 
+def test_entorno_con_la_base_de_datos_caida_lo_dice(monkeypatch):
+    """Una base de datos muerta no puede salir como «compartida y correcta».
+
+    Es lo que pasaba con la Postgres gratuita de Render al caducar: la pantalla
+    de Configuración seguía diciendo «postgresql · compartida» mientras el resto
+    de la web devolvía 500.
+    """
+    monkeypatch.setattr(db, "check", lambda: (False, "could not connect to server"))
+    monkeypatch.setattr(db, "backend", lambda: "postgresql")
+    env = setup.environment()
+    assert env["db_ok"] is False
+    assert env["db_shared"] is False              # caída no es compartida
+    assert "could not connect" in env["db_error"]
+
+
 def test_entorno_avisa_de_lo_que_impide_el_resumen_semanal(monkeypatch):
     env = setup.environment()
     assert env["db"] == "sqlite" and env["db_shared"] is False
+    assert env["db_ok"] is True and env["db_error"] == ""
     assert env["whatsapp"] is False and env["summary_token"] is False
     monkeypatch.setenv("CALLMEBOT_APIKEY", SECRETOS["CALLMEBOT_APIKEY"])
     monkeypatch.setenv("CALLMEBOT_PHONE", SECRETOS["CALLMEBOT_PHONE"])

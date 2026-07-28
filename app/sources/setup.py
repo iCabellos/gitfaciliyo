@@ -188,14 +188,22 @@ def environment():
     try:
         from . import db
         backend = db.backend()
+        # Preguntarle a la base de datos, no suponerlo por la URL: una Postgres
+        # expirada seguía saliendo como «postgresql · compartida» mientras el
+        # resto de la web devolvía 500.
+        db_ok, db_error = db.check()
     except Exception as exc:  # noqa: BLE001
-        backend = f"no disponible ({exc})"
+        backend, db_ok, db_error = "no disponible", False, " ".join(str(exc).split())[:300]
     whatsapp = (_is_set("CALLMEBOT_APIKEY") and _is_set("CALLMEBOT_PHONE")) or all(
         _is_set(n) for n in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN",
                              "TWILIO_WHATSAPP_FROM", "ALERT_WHATSAPP_TO"))
     return {
         "db": backend,
-        "db_shared": backend == "postgresql",
+        "db_ok": db_ok,
+        "db_error": db_error,
+        # Compartida entre dispositivos solo si además responde: una base de
+        # datos caída no comparte nada.
+        "db_shared": backend == "postgresql" and db_ok,
         "whatsapp": whatsapp,
         "summary_token": _is_set("SUMMARY_TOKEN"),
     }

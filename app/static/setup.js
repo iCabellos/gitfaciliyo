@@ -77,9 +77,11 @@
   }
 
   function renderEnvironment(env, pending) {
+    const caida = env.db_ok === false;
     $("#setupEnv").innerHTML = [
       ["Fuentes conectadas", `${4 - pending.length} de 4`],
-      ["Base de datos", env.db, env.db_shared ? "compartida" : "solo local"],
+      ["Base de datos", caida ? "no responde" : env.db,
+       caida ? "revisa el aviso de abajo" : env.db_shared ? "compartida" : "solo local"],
       ["Aviso por WhatsApp", env.whatsapp ? "configurado" : "sin configurar"],
       ["Resumen protegido", env.summary_token ? "con token" : "sin token"],
     ].map(([l, v, sub]) =>
@@ -88,7 +90,17 @@
        ${sub ? `<span class="m-stat-s">${esc(sub)}</span>` : ""}</div>`).join("");
 
     const avisos = [];
-    if (!env.db_shared) {
+    // Primero lo que rompe todo lo demás: sin base de datos no hay patrimonio,
+    // ni ajustes, ni histórico. Antes esto salía como «postgresql · compartida».
+    if (caida) {
+      avisos.push(`<b>La base de datos no responde</b>, así que ni el patrimonio ni
+        los ajustes se pueden leer ni guardar. Motivo que devuelve el servidor:
+        <code>${esc(env.db_error || "sin detalle")}</code>.
+        Si era la Postgres gratuita de Render: caduca a los 30 días y deja de
+        aceptar conexiones. Crea una en <a href="https://neon.com" target="_blank"
+        rel="noopener">Neon</a> (gratis, sin caducidad) y pega su cadena en
+        <code>DATABASE_URL</code>.`);
+    } else if (!env.db_shared) {
       avisos.push(`La base de datos es local (SQLite). En el servidor define
         <code>DATABASE_URL</code> o perderás el histórico en cada reinicio.`);
     }

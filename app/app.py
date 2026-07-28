@@ -66,7 +66,7 @@ from sources import (bank, trade_republic, trade_republic_live, steam, moxfield,
                      prices, revalue, settings, setup)
 from jobs.weekly_whatsapp import send_whatsapp, coverage_warnings
 
-APP_VERSION = "2026-07-r16-bancos"
+APP_VERSION = "2026-07-r17-bancos-db"
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -171,8 +171,13 @@ def health():
 
 @app.route("/api/version")
 def api_version():
-    return jsonify({"version": APP_VERSION, "db": db.backend(),
-                    "sources": ["banco", "imagin", "trade_republic", "csgo", "magic"]})
+    """Versión desplegada y si la base de datos responde de verdad."""
+    db_ok, db_error = db.check()
+    body = {"version": APP_VERSION, "db": db.backend(), "db_ok": db_ok,
+            "sources": ["banco", "imagin", "trade_republic", "csgo", "magic"]}
+    if not db_ok:
+        body["db_error"] = db_error
+    return jsonify(body)
 
 
 @app.route("/favicon.ico")
@@ -219,12 +224,14 @@ def api_setup_steam():
 # Snapshots / resumen
 # ---------------------------------------------------------------------------
 @app.route("/api/snapshots")
+@api_error(500)
 def api_snapshots_get():
     """Histórico mensual de patrimonio: { 'YYYY-MM': { categoria: valor } }."""
     return jsonify(db.get_snapshots())
 
 
 @app.route("/api/snapshot", methods=["POST"])
+@api_error(500)
 def api_snapshot_post():
     """Guarda/actualiza el valor de una categoría para un mes concreto."""
     body = request.get_json(silent=True) or {}
@@ -238,6 +245,7 @@ def api_snapshot_post():
 
 
 @app.route("/api/snapshots/reset", methods=["POST"])
+@api_error(500)
 def api_snapshots_reset():
     """Borra el histórico mensual y el registro de valores que lo acompaña."""
     db.reset_snapshots()
@@ -246,6 +254,7 @@ def api_snapshots_reset():
 
 
 @app.route("/api/summary")
+@api_error(500)
 def api_summary():
     """Resumen de patrimonio + variación mensual (web y resumen WhatsApp)."""
     return jsonify(patrimonio.summary(db.get_snapshots()) or {})
@@ -408,6 +417,7 @@ def _imagin_callback_url():
 
 
 @app.route("/api/imagin/status")
+@api_error(500)
 def api_imagin_status():
     saved = db.get_setting(enablebanking.SESSION_SETTING, {}) or {}
     return jsonify({
@@ -502,6 +512,7 @@ def api_imagin_refresh():
 
 
 @app.route("/api/imagin/disconnect", methods=["POST"])
+@api_error(500)
 def api_imagin_disconnect():
     enablebanking.disconnect()
     return jsonify({"connected": False})
@@ -511,6 +522,7 @@ def api_imagin_disconnect():
 # Trade Republic por su API (emparejado del dispositivo + cartera en vivo)
 # ---------------------------------------------------------------------------
 @app.route("/api/trade-republic/status")
+@api_error(500)
 def api_tr_status():
     saved = db.get_setting(trade_republic_live.DEVICE_KEY_SETTING, {}) or {}
     return jsonify({"paired": bool(saved.get("pem")),
@@ -552,6 +564,7 @@ def api_tr_live():
 
 
 @app.route("/api/trade-republic/unpair", methods=["POST"])
+@api_error(500)
 def api_tr_unpair():
     trade_republic_live.unpair()
     return jsonify({"paired": False})
@@ -614,6 +627,7 @@ def api_magic():
 
 
 @app.route("/api/cards", methods=["GET", "POST"])
+@api_error(500)
 def api_cards():
     """Lista de cartas guardada (precarga/guarda el gestor de cartas)."""
     if request.method == "POST":

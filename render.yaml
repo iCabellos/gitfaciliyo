@@ -1,8 +1,18 @@
 # Blueprint de Render: panel web (plan gratuito).
-# La base de datos es EXTERNA y gratuita (Supabase o Neon): pega su cadena de
-# conexión en la variable DATABASE_URL desde el panel de Render. Así los datos
-# persisten y se comparten entre móvil/PC/amigos, sin recursos que bloqueen el
-# deploy. Los mensajes programados (precios, WhatsApp) corren en GitHub Actions.
+#
+# ⚠️ NO uses la Postgres gratuita de Render: CADUCA A LOS 30 DÍAS, deja de
+# aceptar conexiones y a los 14 días más se borra con todos los datos dentro.
+# https://render.com/docs/free
+#
+# La base de datos va FUERA, en Neon (https://neon.com): plan gratuito
+# permanente, sin tarjeta y sin caducidad. Su compute se duerme a los 5 min de
+# inactividad y despierta solo al conectarse, así que no hay nada que mantener.
+# Pega su cadena de conexión (la del POOLER) en DATABASE_URL desde el panel de
+# Render. Los mensajes programados (precios, WhatsApp) corren en GitHub Actions.
+#
+# Supabase también es gratis para siempre, pero PAUSA el proyecto tras 1 semana
+# de inactividad y hay que despausarlo a mano: para un panel que abres de vez en
+# cuando es volver al mismo problema.
 services:
   - type: web
     name: mi-patrimonio
@@ -13,8 +23,10 @@ services:
     autoDeploy: true
     healthCheckPath: /health
     envVars:
-      # Pega aquí (en Render → Environment) la cadena de conexión de Supabase/Neon.
-      # Usa la del POOLER (IPv4). Si no la defines, la app usa SQLite efímero.
+      # Pega aquí (en Render → Environment) la cadena de conexión de Neon; usa
+      # la del POOLER (el host que lleva `-pooler`, IPv4). Si no la defines, la
+      # app usa SQLite efímero y pierdes el histórico en cada reinicio.
+      # Formato: postgresql://usuario:clave@ep-xxx-pooler.<region>.aws.neon.tech/neondb?sslmode=require
       - key: DATABASE_URL
         sync: false
       - key: ENABLE_SCHEDULER

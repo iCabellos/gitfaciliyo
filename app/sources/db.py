@@ -14,7 +14,7 @@ import json
 import os
 
 from sqlalchemy import (Column, Float, MetaData, String, Table, Text,
-                        create_engine, delete, insert, select, update)
+                        create_engine, delete, insert, select, text, update)
 
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DATA_DIR = os.environ.get("PATRIMONIO_DATA_DIR") or os.path.join(_HERE, "data")
@@ -40,9 +40,13 @@ def _engine_url():
 
 
 _URL, _IS_SQLITE = _engine_url()
+# `connect_timeout` importa: con una base de datos caída (o expirada, como pasa
+# con las Postgres gratuitas de Render), sin plazo la web se queda colgada
+# esperando en cada petición en vez de decir lo que pasa.
 _engine = create_engine(
     _URL, pool_pre_ping=True,
-    connect_args={"check_same_thread": False} if _IS_SQLITE else {})
+    connect_args=({"check_same_thread": False} if _IS_SQLITE
+                  else {"connect_timeout": 10}))
 
 _meta = MetaData()
 snapshots = Table(
@@ -100,6 +104,25 @@ def _ensure():
 
 def backend():
     return "sqlite" if _IS_SQLITE else "postgresql"
+
+
+def check():
+    """¿Responde de verdad la base de datos? Devuelve (ok, error real).
+
+    `backend()` solo dice qué driver toca por la URL: con la base de datos caída
+    seguía contestando "postgresql" tan tranquilo, así que la pantalla de
+    Configuración daba por buena una base de datos muerta y el resto de la web
+    reventaba con un 500. Esto abre una conexión de verdad y, si falla, devuelve
+    el motivo tal cual para poder enseñarlo.
+    """
+    try:
+        _ensure()
+        with _engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True, ""
+    except Exception as exc:  # noqa: BLE001 - cualquier fallo aquí es "no responde"
+        detalle = " ".join(str(exc).split())
+        return False, detalle[:300]
 
 
 # ---- snapshots -----------------------------------------------------------
