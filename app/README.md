@@ -61,9 +61,11 @@ estado real de cada fuente —lo hecho sale marcado, lo que falta con lo que hay
 que hacer exactamente— y lleva un contador de fuentes pendientes en la propia
 pestaña. Con esto el resumen semanal se actualiza solo, sin subir nada a mano:
 
-1. **imagin** → pestaña *Banco*, «Conectar imagin por API». Pulsa *Autorizar*,
-   autoriza en la app de imagin (SCA) y pega el `code` del retorno. El
-   consentimiento PSD2 dura ~90 días; al caducar te avisa el propio WhatsApp.
+1. **Banco (PSD2)** → copia la **URL de retorno** que muestra la tarjeta y
+   regístrala en tu aplicación de Enable Banking; pulsa *🔎 Buscar bancos* y
+   elige el tuyo; pulsa *Autorizar en mi banco* y confirma el SCA. Al volver, la
+   conexión se completa sola. El consentimiento PSD2 dura ~90 días; al caducar
+   te avisa el propio WhatsApp y basta con volver a autorizar.
 2. **Trade Republic** → pestaña *Trade Republic*, «Conectar por API». Teléfono +
    PIN → llega un código → *Emparejar*. El dispositivo queda autorizado y a
    partir de ahí no hace falta ningún código más.
@@ -71,7 +73,8 @@ pestaña. Con esto el resumen semanal se actualiza solo, sin subir nada a mano:
 4. **Magic** → pegas la decklist (o la URL del mazo); queda guardada.
 
 Requisitos de servidor para 1 y 2 (ver `.env.example`): `ENABLE_BANKING_APP_ID`,
-la clave privada de la app, `ENABLE_BANKING_REDIRECT_URL`, `TR_PHONE` y `TR_PIN`.
+la clave privada de la app, `TR_PHONE` y `TR_PIN`. La URL de retorno y el banco
+ya no hacen falta como variables: se ven y se eligen en ⚙️ Configuración.
 
 La vía manual (subir el PDF/CSV del banco o de Trade Republic) sigue funcionando
 igual y es el respaldo cuando una API falla.

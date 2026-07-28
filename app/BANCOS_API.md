@@ -9,7 +9,9 @@ su documentación.
 > **Estado: implementado.** Las dos vías recomendadas ya están en el código
 > (`sources/enablebanking.py` y `sources/trade_republic_live.py`), enganchadas a
 > `revalue.refresh_live()` y con su UI en la web. Lo único que falta es dar de
-> alta las credenciales en el servidor (ver `.env.example`).
+> alta las credenciales en el servidor (ver `.env.example`); el resto —qué URL
+> de retorno registrar, con qué nombre está tu banco y recoger el `code` del
+> SCA— lo resuelve ya la pantalla de ⚙️ Configuración.
 
 ---
 
@@ -41,18 +43,32 @@ Por qué encaja aquí:
 
 Integración (hecha):
 1. Registra la app en Enable Banking (modo restricted production) y define
-   `ENABLE_BANKING_APP_ID`, `ENABLE_BANKING_PRIVATE_KEY` (PEM o su base64, o
-   bien `ENABLE_BANKING_KEY_PATH`) y `ENABLE_BANKING_REDIRECT_URL`.
-2. `sources/enablebanking.py`: JWT RS256 con el `kid` de la aplicación →
+   `ENABLE_BANKING_APP_ID` y `ENABLE_BANKING_PRIVATE_KEY` (PEM o su base64, o
+   bien `ENABLE_BANKING_KEY_PATH`). La **URL de retorno** que hay que registrar
+   allí la muestra la propia web en ⚙️ Configuración: por defecto es
+   `https://<tu-app>/imagin/callback`. `ENABLE_BANKING_REDIRECT_URL` solo hace
+   falta si registraste otra distinta.
+2. **Elegir banco**: `GET /aspsps?country=ES&psu_type=personal` da los nombres
+   exactos que reconoce Enable Banking; la web los lista y guarda el elegido.
+   Sin esto no había forma de saber con qué nombre está dado de alta tu banco, y
+   `POST /auth` fallaba con un error opaco. `ENABLE_BANKING_ASPSP` sigue estando
+   para fijarlo desde el servidor (y entonces el selector queda bloqueado).
+3. `sources/enablebanking.py`: JWT RS256 con el `kid` de la aplicación →
    `POST /auth` (URL de SCA) → `POST /sessions` (sesión reutilizable) →
    `GET /accounts/{uid}/balances` y `/transactions` (con paginación por
    `continuation_key`). Los movimientos se mapean al formato de
    `bank.analyze_raw()` y se persisten con `ingest.persist_bank_aggregates()`.
-3. «Liquidez (banco)» entra en `revalue.refresh_live()`. Si el consentimiento ha
+4. **Retorno del SCA**: el banco redirige a la URL de retorno con
+   `?code=…&state=…` (o `?error=…&error_description=…`). La ruta
+   `GET /imagin/callback` recoge ese `code`, comprueba que el `state` es el de
+   la autorización que se inició aquí y crea la sesión. Antes no existía esa
+   ruta: había que copiar el `code` de la barra de direcciones a mano.
+5. «Liquidez (banco)» entra en `revalue.refresh_live()`. Si el consentimiento ha
    caducado, el error real sube hasta el resumen de WhatsApp como ⚠️ (sin
    arrastrar el saldo viejo en silencio) y la web permite volver a autorizar.
 
-Rutas: `GET /api/imagin/status`, `POST /api/imagin/auth`,
+Rutas: `GET /api/imagin/status`, `GET /api/imagin/banks`,
+`POST /api/imagin/bank`, `POST /api/imagin/auth`, `GET /imagin/callback`,
 `POST /api/imagin/session`, `POST /api/imagin/refresh`.
 
 ### 1c. Wealth Reader — ya integrada, requiere API key comercial

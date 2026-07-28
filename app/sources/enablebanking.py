@@ -9,8 +9,10 @@ es exactamente este caso (ver `BANCOS_API.md`).
 Flujo:
   1. `start_auth()` crea una autorización y devuelve la URL donde imagin pide el
      SCA (DNI + PIN/biometría). El usuario la abre y autoriza.
-  2. imagin redirige a `redirect_url` con `?code=…`; `complete_auth(code)` crea
-     la sesión y guarda su `session_id` y las cuentas en la base de datos.
+  2. El banco redirige a `redirect_url` con `?code=…&state=…` (o con
+     `?error=…&error_description=…` si algo falla). La web recoge ese `code` en
+     su ruta de retorno y `complete_auth(code, state)` crea la sesión y guarda
+     su `session_id` y las cuentas en la base de datos.
   3. `analyze()` lee saldos y movimientos de la sesión guardada y los clasifica
      con la MISMA lógica del extracto en PDF (`bank.analyze_raw`).
 
@@ -23,15 +25,18 @@ Configuración (variables de entorno del servidor):
     ENABLE_BANKING_APP_ID        id de la aplicación registrada
     ENABLE_BANKING_PRIVATE_KEY   clave privada PEM (o su base64), o…
     ENABLE_BANKING_KEY_PATH      …ruta a la clave privada PEM
-    ENABLE_BANKING_ASPSP         banco (por defecto 'imagin')
+    ENABLE_BANKING_ASPSP         banco (opcional: si no, el elegido en la web)
     ENABLE_BANKING_COUNTRY       país (por defecto 'ES')
-    ENABLE_BANKING_REDIRECT_URL  URL de retorno registrada en Enable Banking
+    ENABLE_BANKING_REDIRECT_URL  URL de retorno registrada en Enable Banking.
+                                 Opcional: si no está, se usa la ruta de retorno
+                                 de la propia web (/imagin/callback).
 Doc: https://enablebanking.com/docs/api/reference/
 """
 
 import base64
 import datetime
 import os
+import urllib.parse
 import uuid
 
 from . import http, bank, db
@@ -39,6 +44,11 @@ from . import http, bank, db
 API = "https://api.enablebanking.com"
 SOURCE = "imagin (Enable Banking)"
 SESSION_SETTING = "enablebanking_session"
+PENDING_SETTING = SESSION_SETTING + ":pending"
+# Banco elegido desde la web. Que sea un ajuste y no solo una variable de
+# entorno es lo que permite descubrir cómo se llama TU banco en Enable Banking
+# (`list_aspsps`) y elegirlo sin tocar el servidor.
+ASPSP_SETTING = "enablebanking_aspsp"
 
 DEFAULT_ASPSP = "imagin"
 DEFAULT_COUNTRY = "ES"
@@ -121,25 +131,97 @@ def _api(path, method="GET", payload=None):
 # ---------------------------------------------------------------------------
 # Autorización del banco (SCA en la app de imagin)
 # ---------------------------------------------------------------------------
+def default_country():
+    return os.environ.get("ENABLE_BANKING_COUNTRY", "").strip() or DEFAULT_COUNTRY
+
+
 def default_aspsp():
-    return {"name": os.environ.get("ENABLE_BANKING_ASPSP", DEFAULT_ASPSP).strip(),
-            "country": os.environ.get("ENABLE_BANKING_COUNTRY", DEFAULT_COUNTRY).strip()}
+    """Banco con el que se autoriza: variable de entorno > elegido en la web > imagin.
+
+    Mismo orden de precedencia que el resto de ajustes (`sources/settings.py`):
+    lo que fija el servidor manda sobre lo que se guardó desde el navegador.
+    """
+    env_name = os.environ.get("ENABLE_BANKING_ASPSP", "").strip()
+    if env_name:
+        return {"name": env_name, "country": default_country()}
+    try:
+        saved = db.get_setting(ASPSP_SETTING, {}) or {}
+    except Exception:  # noqa: BLE001 - sin base de datos, se usa el de por defecto
+        saved = {}
+    name = str(saved.get("name") or "").strip()
+    if name:
+        return {"name": name,
+                "country": str(saved.get("country") or "").strip() or default_country()}
+    return {"name": DEFAULT_ASPSP, "country": default_country()}
 
 
-def list_aspsps(country=None):
-    """Bancos disponibles del país (para comprobar cómo se llama imagin)."""
-    country = country or os.environ.get("ENABLE_BANKING_COUNTRY", DEFAULT_COUNTRY)
-    data = _api(f"/aspsps?country={country}")
-    return [{"name": a.get("name"), "country": a.get("country"),
-             "psu_types": a.get("psu_types"), "logo": a.get("logo")}
-            for a in data.get("aspsps", [])]
+def set_aspsp(name, country=None):
+    """Guarda el banco elegido desde la web (el que se usará al autorizar)."""
+    name = str(name or "").strip()
+    if not name:
+        raise ValueError("Indica el nombre del banco tal y como lo lista Enable Banking.")
+    target = {"name": name, "country": (str(country or "").strip() or default_country()).upper()}
+    db.set_setting(ASPSP_SETTING, target)
+    return target
 
 
-def start_auth(redirect_url=None, aspsp=None, country=None, days=CONSENT_DAYS):
-    """Crea la autorización y devuelve la URL de SCA que debe abrir el usuario."""
-    redirect_url = (redirect_url
-                    or os.environ.get("ENABLE_BANKING_REDIRECT_URL", "").strip())
-    if not redirect_url:
+def list_aspsps(country=None, psu_type="personal"):
+    """Bancos que Enable Banking soporta en ese país, para elegir el tuyo.
+
+    Sin esto no hay forma de saber con qué nombre EXACTO está dado de alta tu
+    banco, y `POST /auth` falla con un error opaco si no coincide.
+    """
+    params = {"country": (country or default_country()).upper()}
+    if psu_type:
+        params["psu_type"] = psu_type
+    data = _api("/aspsps?" + urllib.parse.urlencode(params))
+    out = [{"name": a.get("name"), "country": a.get("country"),
+            "psu_types": a.get("psu_types") or [],
+            "logo": a.get("logo"), "bic": a.get("bic"), "beta": bool(a.get("beta")),
+            # Días máximos de consentimiento que admite ese banco: pedir más de
+            # los que acepta es motivo de rechazo en `POST /auth`.
+            "maximum_consent_validity": a.get("maximum_consent_validity")}
+           for a in data.get("aspsps", []) if a.get("name")]
+    out.sort(key=lambda a: (a["name"] or "").lower())
+    return out
+
+
+def configured_redirect_url(default=None):
+    """URL de retorno: la registrada en el servidor o, si no, la de la propia web."""
+    return os.environ.get("ENABLE_BANKING_REDIRECT_URL", "").strip() or (default or "")
+
+
+def _consent_valid_until(days, maximum_seconds=None):
+    """Fecha de caducidad del consentimiento, sin pasarse del máximo del banco.
+
+    `maximum_seconds` es el `maximum_consent_validity` de `/aspsps`, que viene en
+    SEGUNDOS. Es solo una ayuda para no pedir más de lo que ese banco acepta: si
+    llega con una forma rara se ignora, en vez de tumbar toda la autorización.
+    """
+    try:
+        days = max(1, int(days or CONSENT_DAYS))
+    except (TypeError, ValueError):
+        days = CONSENT_DAYS
+    try:
+        if maximum_seconds:
+            days = min(days, max(1, int(maximum_seconds) // 86400))
+    except (TypeError, ValueError):
+        pass
+    return datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days)
+
+
+def start_auth(redirect_url=None, aspsp=None, country=None, days=CONSENT_DAYS,
+               maximum_consent_validity=None, default_redirect_url=None):
+    """Crea la autorización y devuelve la URL de SCA que debe abrir el usuario.
+
+    La URL de retorno sale, por este orden, de: lo que pida quien llama,
+    `ENABLE_BANKING_REDIRECT_URL`, y la ruta de retorno de la propia web
+    (`default_redirect_url`). Sea cual sea, tiene que estar registrada en
+    Enable Banking o el banco rechaza la autorización.
+    """
+    target_url = (str(redirect_url or "").strip()
+                  or configured_redirect_url(default_redirect_url))
+    if not target_url:
         raise NotConfigured("Falta ENABLE_BANKING_REDIRECT_URL (la URL de retorno "
                             "que registraste en Enable Banking).")
     target = default_aspsp()
@@ -147,28 +229,39 @@ def start_auth(redirect_url=None, aspsp=None, country=None, days=CONSENT_DAYS):
         target["name"] = aspsp
     if country:
         target["country"] = country
-    valid_until = (datetime.datetime.now(datetime.timezone.utc)
-                   + datetime.timedelta(days=days))
+    valid_until = _consent_valid_until(days, maximum_consent_validity)
     state = uuid.uuid4().hex
     data = _api("/auth", "POST", {
         "access": {"valid_until": valid_until.isoformat().replace("+00:00", "Z")},
         "aspsp": target,
         "state": state,
-        "redirect_url": redirect_url,
+        "redirect_url": target_url,
         "psu_type": "personal",
     })
     url = data.get("url")
     if not url:
         raise EnableBankingError(f"Enable Banking no devolvió URL de autorización: {data}")
-    db.set_setting(SESSION_SETTING + ":pending", {"state": state, "aspsp": target})
+    db.set_setting(PENDING_SETTING, {"state": state, "aspsp": target,
+                                     "redirect_url": target_url})
     return {"url": url, "state": state, "aspsp": target,
+            "redirect_url": target_url,
             "valid_until": valid_until.date().isoformat()}
 
 
-def complete_auth(code):
-    """Cambia el `code` del retorno por una sesión y la guarda."""
+def complete_auth(code, state=None):
+    """Cambia el `code` del retorno por una sesión y la guarda.
+
+    Si el retorno trae `state`, se comprueba contra el que se generó al empezar:
+    un `state` que no cuadra significa que ese retorno no es de la autorización
+    que pediste, y no se cambia por una sesión.
+    """
     if not str(code or "").strip():
         raise ValueError("Falta el 'code' que devuelve imagin al autorizar.")
+    pending = db.get_setting(PENDING_SETTING, {}) or {}
+    expected = str(pending.get("state") or "")
+    if state and expected and str(state) != expected:
+        raise ValueError("El 'state' del retorno no coincide con el de la autorización "
+                         "que se inició aquí. Vuelve a pulsar «Autorizar».")
     data = _api("/sessions", "POST", {"code": str(code).strip()})
     session_id = data.get("session_id")
     accounts = data.get("accounts") or []

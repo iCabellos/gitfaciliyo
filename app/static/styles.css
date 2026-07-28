@@ -7,7 +7,6 @@
   --muted: #8e8e93;
   --faint: #636366;
   --line: rgba(255, 255, 255, .12);
-  --glass: rgba(255, 255, 255, .055);
   --grad: linear-gradient(180deg, #ffffff 0%, #b9b9bf 100%);
   /* base en blanco y negro + toques de color en los detalles */
   --accent: #6ea8ff;       /* acento (focos, detalles) */
@@ -32,26 +31,34 @@ body {
   font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; overflow-x: hidden;
 }
 
-/* ---------- Fondo: negro con destellos blancos (parallax) ---------- */
+/* ---------- Fondo: negro con destellos blancos (parallax) ----------
+   Rendimiento: los blobs son degradados radiales que ya se desvanecen a
+   `transparent`, así que están difuminados POR SÍ MISMOS. El `filter: blur()`
+   que llevaban encima no cambiaba la imagen de forma apreciable y obligaba a
+   reconvolucionar tres capas de ~600px en cada fotograma del scroll. Se mueven
+   solo con `transform`, que va en la GPU y no repinta nada.                   */
 .bg { position: fixed; inset: 0; z-index: -1; overflow: hidden;
   background:
     radial-gradient(1100px 700px at 78% -8%, rgba(255, 255, 255, .10), transparent 60%),
     radial-gradient(900px 600px at 0% 8%, rgba(255, 255, 255, .06), transparent 55%),
     var(--bg); }
-.blob { position: absolute; border-radius: 50%; filter: blur(100px); will-change: transform; }
+.blob { position: absolute; border-radius: 50%; will-change: transform; }
 .blob-a { width: 620px; height: 620px; left: -160px; top: -120px;
-  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, .18), transparent 70%); }
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, .16), transparent 72%); }
 .blob-b { width: 560px; height: 560px; right: -160px; top: 240px;
-  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .12), transparent 70%); }
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .11), transparent 72%); }
 .blob-c { width: 680px; height: 680px; left: 30%; bottom: -260px;
-  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .08), transparent 70%); }
-.grid { position: absolute; inset: 0; opacity: .25;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .07), transparent 72%); }
+.grid { position: absolute; inset: 0; opacity: .25; will-change: transform;
   background-image: linear-gradient(var(--line) 1px, transparent 1px),
                     linear-gradient(90deg, var(--line) 1px, transparent 1px);
   background-size: 56px 56px;
   -webkit-mask-image: radial-gradient(900px 600px at 50% 0%, #000, transparent 75%);
           mask-image: radial-gradient(900px 600px at 50% 0%, #000, transparent 75%); }
-.noise { position: absolute; inset: 0; opacity: .04; mix-blend-mode: overlay;
+/* Sin `mix-blend-mode`: mezclar esta capa a pantalla completa obliga al
+   compositor a rehacer el fondo entero en cada fotograma. A opacidad .04 el
+   grano se ve igual sin mezcla. */
+.noise { position: absolute; inset: 0; opacity: .035;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 
 main { max-width: 1060px; margin: 0 auto; padding: 0 20px 90px; }
@@ -60,7 +67,7 @@ main { max-width: 1060px; margin: 0 auto; padding: 0 20px 90px; }
 .hero { position: relative; max-width: 1060px; margin: 0 auto; padding: 120px 20px 60px; text-align: center; }
 .badge { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; font-weight: 600;
   letter-spacing: .02em; color: var(--ink); padding: 7px 14px 7px 12px; border-radius: 999px;
-  border: 1px solid var(--line); background: rgba(255, 255, 255, .06); backdrop-filter: blur(10px); }
+  border: 1px solid var(--line); background: rgba(255, 255, 255, .07); }
 .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pos);
   box-shadow: 0 0 0 3px rgba(70, 211, 154, .25); animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
@@ -71,19 +78,26 @@ main { max-width: 1060px; margin: 0 auto; padding: 0 20px 90px; }
 .hero-sub { color: var(--muted); font-size: clamp(15px, 2.4vw, 19px); max-width: 640px; margin: 0 auto; }
 .hero-chips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 28px; }
 .chip { font-size: 13px; font-weight: 500; color: var(--ink); padding: 8px 14px; border-radius: 14px;
-  border: 1px solid var(--line); background: rgba(255, 255, 255, .05); backdrop-filter: blur(10px);
+  border: 1px solid var(--line); background: rgba(255, 255, 255, .06);
   filter: grayscale(1); }
 .scroll-cue { width: 26px; height: 42px; border: 2px solid var(--line); border-radius: 14px; margin: 54px auto 0; position: relative; }
 .scroll-cue span { position: absolute; left: 50%; top: 8px; width: 4px; height: 8px; border-radius: 4px;
   background: #fff; transform: translateX(-50%); animation: cue 1.6s infinite; }
 @keyframes cue { 0% { opacity: 0; top: 8px; } 30% { opacity: 1; } 100% { opacity: 0; top: 22px; } }
 
-/* ---------- Liquid glass ---------- */
+/* ---------- Liquid glass ----------
+   Rendimiento: estos paneles llevaban `backdrop-filter: blur(26px)`. Un
+   backdrop-filter obliga al navegador a copiar TODO lo que hay detrás del
+   panel y volver a difuminarlo en cada fotograma; con varios paneles a lo
+   ancho de la página, y encima uno de ellos `sticky`, eso es exactamente lo
+   que atascaba el scroll. Detrás solo hay degradados suaves, así que
+   difuminarlos no aportaba imagen: el mismo efecto de cristal se consigue con
+   una capa translúcida fija, que el compositor pinta una vez y reutiliza.    */
 .panel { position: relative; margin: 22px 0; padding: 26px; border-radius: var(--radius); }
 .glass {
-  background: var(--glass);
-  backdrop-filter: blur(26px) saturate(180%);
-  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .035)),
+    rgba(12, 12, 14, .58);
   border: 1px solid rgba(255, 255, 255, .14);
   box-shadow:
     var(--shadow),
@@ -132,8 +146,7 @@ code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12.5px;
   border: 1.5px dashed rgba(255, 255, 255, .2); background: rgba(255, 255, 255, .03); transition: .2s; }
 .filebox:hover, .filebox.drag { border-color: rgba(255, 255, 255, .5); color: var(--ink); background: rgba(255, 255, 255, .07); }
 input[type=text], textarea { width: 100%; background: rgba(255, 255, 255, .05); color: var(--ink);
-  border: 1px solid var(--line); border-radius: 14px; padding: 13px 15px; font-size: 14px; transition: .2s;
-  backdrop-filter: blur(8px); }
+  border: 1px solid var(--line); border-radius: 14px; padding: 13px 15px; font-size: 14px; transition: .2s; }
 input[type=text] { flex: 1; min-width: 240px; }
 input[type=text]:focus, input[type=number]:focus, textarea:focus { outline: none;
   border-color: var(--accent); box-shadow: 0 0 0 4px rgba(110, 168, 255, .18); }
@@ -155,7 +168,7 @@ button:disabled { opacity: .5; cursor: progress; }
 .kpi { position: relative; padding: 18px; border-radius: 18px; overflow: hidden;
   border: 1px solid rgba(255, 255, 255, .12);
   background: linear-gradient(180deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .03));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25); backdrop-filter: blur(14px); }
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25); }
 .kpi::before { content: ""; position: absolute; left: 0; top: 0; height: 100%; width: 3px;
   background: linear-gradient(180deg, #fff, rgba(255, 255, 255, .25)); }
 .kpi .label { color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
@@ -196,8 +209,12 @@ select:focus { outline: none; border-color: rgba(255, 255, 255, .5); }
 .bulk { margin: 14px 0 4px; border: 1px solid var(--line); border-radius: 14px; padding: 4px 14px; background: rgba(255, 255, 255, .02); }
 .bulk summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 10px 0; }
 .card-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+/* `content-visibility: auto` deja que el navegador se salte el maquetado y el
+   pintado de las filas que no se ven. Con listas de cientos o miles de cartas
+   es la diferencia entre un scroll fluido y uno a tirones. */
 .card-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px;
-  border: 1px solid var(--line); background: rgba(255, 255, 255, .04); }
+  border: 1px solid var(--line); background: rgba(255, 255, 255, .04);
+  content-visibility: auto; contain-intrinsic-size: auto 44px; }
 .card-q { font-family: "Sora", sans-serif; font-weight: 700; color: var(--accent); min-width: 30px; }
 .card-n { flex: 1; }
 .card-del { background: rgba(255, 107, 107, .12); color: var(--neg); border: 1px solid rgba(255, 107, 107, .3);
@@ -231,7 +248,7 @@ select:focus { outline: none; border-color: rgba(255, 255, 255, .5); }
 /* ---------- Galería de cartas Magic ---------- */
 .m-statbar { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .m-stat { padding: 14px 16px; border-radius: 16px; border: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .02)); backdrop-filter: blur(12px); }
+  background: linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .02)); }
 .m-stat-l { display: block; color: var(--muted); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
 .m-stat-v { display: block; font-family: "Sora", sans-serif; font-weight: 800; font-size: 20px; margin-top: 4px; }
 .m-stat-s { display: block; color: var(--faint); font-size: 11.5px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -255,7 +272,8 @@ select:focus { outline: none; border-color: rgba(255, 255, 255, .5); }
 .mcard { position: relative; border-radius: 14px; border: 1px solid var(--line); padding: 12px 14px;
   background: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .02));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .15); transition: transform .16s, box-shadow .16s, border-color .16s;
-  display: flex; flex-direction: column; gap: 7px; }
+  display: flex; flex-direction: column; gap: 7px;
+  content-visibility: auto; contain-intrinsic-size: auto 132px; }
 .mcard:hover { transform: translateY(-3px); border-color: rgba(255, 255, 255, .28);
   box-shadow: 0 16px 34px -22px rgba(0, 0, 0, .85); }
 .mcard.is-foil { border: 1.5px solid transparent; background:
@@ -299,7 +317,8 @@ select:focus { outline: none; border-color: rgba(255, 255, 255, .5); }
 .skcard { --rar: #8e8e93; position: relative; display: flex; flex-direction: column;
   border-radius: 16px; border: 1px solid var(--line); overflow: hidden;
   background: linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .02));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); transition: transform .16s, box-shadow .16s, border-color .16s; }
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); transition: transform .16s, box-shadow .16s, border-color .16s;
+  content-visibility: auto; contain-intrinsic-size: auto 258px; }
 .skcard::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
   background: var(--rar); z-index: 2; }
 .skcard:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--rar) 55%, transparent);
@@ -314,7 +333,7 @@ select:focus { outline: none; border-color: rgba(255, 255, 255, .5); }
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .55)); }
 .sk-noimg { font-size: 40px; opacity: .5; }
 .sk-qty { position: absolute; top: 8px; left: 8px; z-index: 2; font: 700 11px "Sora", sans-serif;
-  color: var(--ink); background: rgba(0, 0, 0, .55); backdrop-filter: blur(4px);
+  color: var(--ink); background: rgba(0, 0, 0, .62);
   padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); }
 .sk-rar { position: absolute; bottom: 8px; right: 8px; z-index: 2; width: 12px; height: 12px;
   border-radius: 50%; background: var(--rar); box-shadow: 0 0 10px color-mix(in srgb, var(--rar) 80%, transparent);
@@ -366,6 +385,12 @@ select:focus { outline: none; border-color: rgba(255, 255, 255, .5); }
 .setup-actions { border-top: 1px solid var(--line); padding-top: 12px; }
 .setup-actions .row { gap: 8px; flex-wrap: wrap; }
 .setup-note:empty { display: none; }
+.field-label { display: block; margin: 10px 0 6px; color: var(--muted);
+  font: 600 11px "Inter", sans-serif; text-transform: uppercase; letter-spacing: .06em; }
+.setup-actions .field-label:first-child { margin-top: 0; }
+#imaginRedirect { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12.5px;
+  color: var(--muted); }
+#imaginBank { flex: 1; min-width: 220px; }
 @media (max-width: 560px) {
   .setup-grid { grid-template-columns: 1fr; }
 }
@@ -386,11 +411,11 @@ select:focus { outline: none; border-color: rgba(255, 255, 255, .5); }
 .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
 .chart-card { border: 1px solid var(--line); border-radius: 18px; padding: 18px;
   background: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .02));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2); backdrop-filter: blur(14px); }
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2); }
 .chart-wrap { position: relative; height: 300px; margin-top: 10px; }
 .mini-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
 .mini-card { border: 1px solid var(--line); border-radius: 16px; padding: 14px; height: 150px;
-  display: flex; flex-direction: column; background: rgba(255, 255, 255, .03); backdrop-filter: blur(10px); }
+  display: flex; flex-direction: column; background: rgba(255, 255, 255, .03); }
 .mini-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; }
 .mini-head span { color: var(--muted); }
 .mini-head b { font-family: "Sora", sans-serif; font-size: 15px; }

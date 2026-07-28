@@ -92,14 +92,33 @@
           <ol class="setup-steps"></ol>
           <div class="setup-missing"></div>
           <div class="setup-actions">
+            <label class="field-label" for="imaginRedirect">URL de retorno · regístrala en Enable Banking</label>
             <div class="row">
-              <button type="button" id="imaginAuthBtn">Autorizar en imagin</button>
-              <input type="text" id="imaginCode" placeholder="Pega aquí el «code» del retorno" />
-              <button type="button" id="imaginSessionBtn">Conectar</button>
+              <input type="text" id="imaginRedirect" readonly
+                     placeholder="se calcula al cargar" />
+              <button type="button" class="m-chip" id="imaginCopyRedirect">⧉ Copiar</button>
             </div>
-            <div class="row" style="margin-top:10px">
+
+            <label class="field-label" for="imaginBank">Tu banco</label>
+            <div class="row">
+              <select id="imaginBank" aria-label="Banco">
+                <option value="">— pulsa «Buscar bancos» —</option>
+              </select>
+              <button type="button" class="m-chip" id="imaginBanksBtn">🔎 Buscar bancos</button>
+            </div>
+
+            <div class="row" style="margin-top:12px">
+              <button type="button" id="imaginAuthBtn">Autorizar en mi banco</button>
               <button type="button" class="m-chip" id="imaginRefreshBtn">↻ Traer saldo ahora</button>
             </div>
+
+            <details class="bulk" id="imaginManual">
+              <summary>¿El navegador no volvió solo? Pega el «code» a mano</summary>
+              <div class="row" style="margin-top:10px">
+                <input type="text" id="imaginCode" placeholder="El «code» de la URL de retorno" />
+                <button type="button" id="imaginSessionBtn">Conectar</button>
+              </div>
+            </details>
             <div id="imaginResult"></div>
           </div>
           <p class="setup-note hint"></p>
@@ -369,7 +388,6 @@
 
   <script src="{{ url_for('static', filename='vendor/gsap.min.js') }}"></script>
   <script src="{{ url_for('static', filename='vendor/ScrollTrigger.min.js') }}"></script>
-  <script src="{{ url_for('static', filename='vendor/lenis.min.js') }}"></script>
   <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
   <script src="{{ url_for('static', filename='charts.js') }}"></script>

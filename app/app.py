@@ -22,8 +22,11 @@ API:
 
     -- imagin por PSD2 (Enable Banking) --
     GET  /api/imagin/status                     si el banco está autorizado
+    GET  /api/imagin/banks[?country=ES]         bancos disponibles para elegir
+    POST /api/imagin/bank     {name,country}    guarda el banco elegido
     POST /api/imagin/auth                       inicia la autorización (SCA)
-    POST /api/imagin/session  {code}            completa la autorización
+    GET  /imagin/callback                       retorno del banco tras el SCA
+    POST /api/imagin/session  {code,state}      completa la autorización a mano
     POST /api/imagin/refresh                    saldo + movimientos en vivo
 
     -- Trade Republic por su API --
@@ -55,14 +58,15 @@ import tempfile
 import urllib.request
 from xml.sax.saxutils import escape as xml_escape
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from sources import (bank, trade_republic, trade_republic_live, steam, moxfield,
                      db, ingest, wealthreader, enablebanking, patrimonio,
                      prices, revalue, settings, setup)
 from jobs.weekly_whatsapp import send_whatsapp, coverage_warnings
 
-APP_VERSION = "2026-07-r15-apis"
+APP_VERSION = "2026-07-r16-bancos"
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -70,6 +74,11 @@ log = logging.getLogger("patrimonio")
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
+# Render (y cualquier hosting con proxy) termina el TLS por delante y habla HTTP
+# con el contenedor. Sin esto, `url_for(..., _external=True)` construiría
+# `http://…` y la URL de retorno NO coincidiría con la registrada en Enable
+# Banking (que es https), así que el banco rechazaría la autorización.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 _HERE = os.path.dirname(__file__)
 
@@ -188,7 +197,7 @@ def api_config():
 @api_error(500)
 def api_setup():
     """Estado real de cada fuente. Nunca devuelve el valor de un secreto."""
-    return jsonify(setup.status())
+    return jsonify(setup.status(callback_url=_imagin_callback_url()))
 
 
 @app.route("/api/setup/steam", methods=["POST"])
@@ -393,6 +402,11 @@ def api_trade_republic():
 # ---------------------------------------------------------------------------
 # imagin (CaixaBank) por PSD2: Enable Banking
 # ---------------------------------------------------------------------------
+def _imagin_callback_url():
+    """URL de retorno de ESTA web: la que hay que registrar en Enable Banking."""
+    return url_for("imagin_callback", _external=True)
+
+
 @app.route("/api/imagin/status")
 def api_imagin_status():
     saved = db.get_setting(enablebanking.SESSION_SETTING, {}) or {}
@@ -402,7 +416,31 @@ def api_imagin_status():
                      for a in saved.get("accounts", [])],
         "valid_until": saved.get("access_valid_until"),
         "aspsp": saved.get("aspsp") or enablebanking.default_aspsp(),
+        # Lo que hay que pegar en Enable Banking como redirect URL. Sin esto no
+        # había forma de saberlo, y una URL que no coincide es un rechazo seco.
+        "redirect_url": enablebanking.configured_redirect_url(_imagin_callback_url()),
+        "callback_url": _imagin_callback_url(),
     })
+
+
+@app.route("/api/imagin/banks")
+@api_error()
+def api_imagin_banks():
+    """Bancos que Enable Banking soporta en tu país, para elegir el tuyo."""
+    country = (request.args.get("country") or "").strip() or None
+    return jsonify({"country": (country or enablebanking.default_country()).upper(),
+                    "selected": enablebanking.default_aspsp(),
+                    "fixed_by_env": bool(os.environ.get("ENABLE_BANKING_ASPSP", "").strip()),
+                    "aspsps": enablebanking.list_aspsps(country)})
+
+
+@app.route("/api/imagin/bank", methods=["POST"])
+@api_error()
+def api_imagin_bank():
+    """Guarda el banco con el que autorizar (nombre exacto de Enable Banking)."""
+    body = request.get_json(silent=True) or {}
+    return jsonify({"selected": enablebanking.set_aspsp(body.get("name"),
+                                                        body.get("country"))})
 
 
 @app.route("/api/imagin/auth", methods=["POST"])
@@ -412,7 +450,35 @@ def api_imagin_auth():
     body = request.get_json(silent=True) or {}
     return jsonify(enablebanking.start_auth(
         redirect_url=(body.get("redirect_url") or "").strip() or None,
-        aspsp=(body.get("aspsp") or "").strip() or None))
+        aspsp=(body.get("aspsp") or "").strip() or None,
+        country=(body.get("country") or "").strip() or None,
+        maximum_consent_validity=body.get("maximum_consent_validity"),
+        default_redirect_url=_imagin_callback_url()))
+
+
+@app.route("/imagin/callback")
+def imagin_callback():
+    """Retorno del banco tras el SCA: cambia el `code` por una sesión y vuelve.
+
+    Es la pieza que faltaba: el banco redirige aquí con `?code=…&state=…` (o con
+    `?error=…&error_description=…`). Antes no había ruta que lo recogiera, así
+    que había que copiar el `code` de la barra de direcciones a mano.
+    """
+    error = (request.args.get("error") or "").strip()
+    if error:
+        detail = (request.args.get("error_description") or "").strip() or error
+        return redirect(url_for("index", imagin="error", detail=detail[:300]))
+    code = (request.args.get("code") or "").strip()
+    if not code:
+        return redirect(url_for("index", imagin="error",
+                                detail="El banco no devolvió ningún 'code'."))
+    try:
+        saved = enablebanking.complete_auth(code, request.args.get("state"))
+    except Exception as exc:  # noqa: BLE001 - el fallo real se ve en la web
+        log.exception("imagin: no se pudo completar la autorización")
+        return redirect(url_for("index", imagin="error", detail=str(exc)[:300]))
+    return redirect(url_for("index", imagin="ok",
+                            accounts=len(saved.get("accounts") or [])))
 
 
 @app.route("/api/imagin/session", methods=["POST"])
@@ -421,7 +487,7 @@ def api_imagin_session():
     """Cambia el `code` del retorno de imagin por una sesión reutilizable."""
     body = request.get_json(silent=True) or {}
     code = (body.get("code") or request.args.get("code") or "").strip()
-    saved = enablebanking.complete_auth(code)
+    saved = enablebanking.complete_auth(code, body.get("state") or request.args.get("state"))
     return jsonify({"connected": True, "accounts": saved["accounts"],
                     "valid_until": saved.get("access_valid_until")})
 

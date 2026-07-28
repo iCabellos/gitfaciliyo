@@ -17,7 +17,9 @@ from . import settings
 
 # Variables que el servidor necesita para cada fuente. Solo se comprueba su
 # PRESENCIA; el valor no sale de aquí.
-IMAGIN_ENV = ("ENABLE_BANKING_APP_ID", "ENABLE_BANKING_REDIRECT_URL")
+# ENABLE_BANKING_REDIRECT_URL ya no está: si no se define, la web usa su propia
+# ruta de retorno (/imagin/callback), que es la que se muestra para registrar.
+IMAGIN_ENV = ("ENABLE_BANKING_APP_ID",)
 IMAGIN_KEY_ENV = ("ENABLE_BANKING_PRIVATE_KEY", "ENABLE_BANKING_KEY_PATH")
 TR_ENV = ("TR_PHONE", "TR_PIN")
 
@@ -87,13 +89,15 @@ def _magic():
     }
 
 
-def _imagin():
+def _imagin(callback_url=""):
     try:
         from . import enablebanking, db
         saved = db.get_setting(enablebanking.SESSION_SETTING, {}) or {}
         aspsp = enablebanking.default_aspsp()
+        redirect_url = enablebanking.configured_redirect_url(callback_url)
     except Exception:  # noqa: BLE001
         saved, aspsp = {}, {"name": "imagin", "country": "ES"}
+        redirect_url = callback_url
     falta = _missing(IMAGIN_ENV)
     if not any(_is_set(n) for n in IMAGIN_KEY_ENV):
         falta.append(IMAGIN_KEY_ENV[0])
@@ -111,25 +115,34 @@ def _imagin():
         "missing_env": falta,
         "connected": conectado,
         "detail": {"accounts": cuentas,
-                   "valid_until": saved.get("access_valid_until")},
-        "summary": (f"{len(cuentas)} cuenta(s) autorizadas." if conectado else
+                   "valid_until": saved.get("access_valid_until"),
+                   "aspsp": aspsp,
+                   # URL EXACTA que hay que registrar en Enable Banking: si no
+                   # coincide con la del retorno, el banco rechaza el SCA.
+                   "redirect_url": redirect_url},
+        "summary": (f"{len(cuentas)} cuenta(s) autorizadas en {aspsp.get('name')}."
+                    if conectado else
                     "Faltan credenciales en el servidor." if not listo_servidor else
-                    "Credenciales listas: falta autorizar en la app del banco."),
+                    f"Credenciales listas: falta autorizar en {aspsp.get('name')}."),
         "steps": [
             {"text": "Regístrate en enablebanking.com y crea una aplicación en modo "
                      "«restricted production» (gratis para leer tus propias cuentas).",
              "done": listo_servidor},
+            {"text": "Registra en esa aplicación la URL de retorno que ves abajo, "
+                     "tal cual (tiene que coincidir carácter a carácter).",
+             "done": listo_servidor},
             {"text": "En el servidor (Render → Environment) define "
-                     "ENABLE_BANKING_APP_ID, la clave privada "
-                     "(ENABLE_BANKING_PRIVATE_KEY o ENABLE_BANKING_KEY_PATH) y "
-                     "ENABLE_BANKING_REDIRECT_URL.", "done": listo_servidor},
+                     "ENABLE_BANKING_APP_ID y la clave privada "
+                     "(ENABLE_BANKING_PRIVATE_KEY o ENABLE_BANKING_KEY_PATH).",
+             "done": listo_servidor},
+            {"text": "Elige tu banco en la lista de abajo (son los nombres exactos "
+                     "que reconoce Enable Banking).", "done": listo_servidor},
             {"text": "Pulsa «Autorizar» y confirma en la app del banco (DNI + "
-                     "PIN/biometría).", "done": conectado},
-            {"text": "Pega aquí el «code» de la URL de retorno y conecta.",
+                     "PIN/biometría). Al volver, la conexión se completa sola.",
              "done": conectado},
         ],
         "note": ("El consentimiento PSD2 caduca a los ~90 días. Cuando pase, el "
-                 "resumen semanal te avisará y bastará con repetir los pasos 3 y 4."),
+                 "resumen semanal te avisará y bastará con volver a pulsar «Autorizar»."),
     }
 
 
@@ -188,9 +201,13 @@ def environment():
     }
 
 
-def status():
-    """Estado completo de configuración: una entrada por fuente + el entorno."""
-    fuentes = [_imagin(), _trade_republic(), _steam(), _magic()]
+def status(callback_url=""):
+    """Estado completo de configuración: una entrada por fuente + el entorno.
+
+    `callback_url` es la ruta de retorno de la propia web; se usa como URL de
+    retorno de imagin cuando no hay ENABLE_BANKING_REDIRECT_URL definida.
+    """
+    fuentes = [_imagin(callback_url), _trade_republic(), _steam(), _magic()]
     return {
         "sources": fuentes,
         "environment": environment(),
